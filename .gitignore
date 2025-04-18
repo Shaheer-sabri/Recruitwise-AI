@@ -1,0 +1,7 @@
+Interviewer/modelfile.md
+venv/
+myenv/
+.gradio/
+__pycache__/
+Resumes/
+Interviewer/ollama-python-README.md

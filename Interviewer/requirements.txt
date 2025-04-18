@@ -1,0 +1,24 @@
+transformers
+numpy
+scipy
+webrtcvad-wheels
+openai
+langchain-ollama
+langchain-core
+langchain-community
+langchain_text_splitters
+unstructured
+fastembed
+pdfplumber
+sentence-transformers
+elevenlabs
+chromadb
+langchain
+ollama
+nltk
+sentence_transformers
+fastapi
+uvicorn
+python-multipart
+#langchain-embeddings
+#updated file
