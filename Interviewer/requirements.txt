@@ -3,6 +3,8 @@ numpy
 scipy
 webrtcvad-wheels
 openai
+langchain
+langchain-groq
 langchain-ollama
 langchain-core
 langchain-community
@@ -11,9 +13,6 @@ unstructured
 fastembed
 pdfplumber
 sentence-transformers
-elevenlabs
-chromadb
-langchain
 ollama
 nltk
 sentence_transformers

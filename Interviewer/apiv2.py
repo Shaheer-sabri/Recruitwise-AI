@@ -13,15 +13,14 @@ from modelv2 import AIInterviewer
 
 # Models for request/response
 class InterviewSettings(BaseModel):
-    model_name: str = "llama3.2"
+    model_name: str = "llama3.2:3b"
     temperature: float = 0.7
     top_p: float = 0.9
-    skills: List[str] = ["computer science"]
+    skills: List[str] = ["data structures", "algorithms", "object-oriented programming"]
     job_position: str = "entry level developer"
     job_description: str = ""
     technical_questions: int = 5
     behavioral_questions: int = 5
-    max_questions: Optional[int] = None
     custom_questions: Optional[List[str]] = None
 
 class ChatMessage(BaseModel):
@@ -37,7 +36,8 @@ class InterviewStatus(BaseModel):
     session_id: str
     active: bool
     questions_asked: int
-    max_questions: Optional[int] = None
+    total_expected_questions: int
+    progress_percentage: float
 
 # Session management
 class SessionManager:
@@ -60,7 +60,6 @@ class SessionManager:
                 job_description=settings.job_description,
                 technical_questions=settings.technical_questions,
                 behavioral_questions=settings.behavioral_questions,
-                max_questions=settings.max_questions,
                 custom_questions=settings.custom_questions
             )
         else:
@@ -220,11 +219,10 @@ def update_settings(session_id: str, settings: InterviewSettings):
             settings.job_description
         ))
         
-        # Update question counts including max_questions
+        # Update question counts
         messages.append(interviewer.update_question_counts(
             settings.technical_questions,
-            settings.behavioral_questions,
-            settings.max_questions
+            settings.behavioral_questions
         ))
         
         # Update skills
@@ -251,7 +249,8 @@ def get_interview_status(session_id: str):
             session_id=session_id,
             active=interviewer.is_interview_active(),
             questions_asked=interviewer.get_questions_asked(),
-            max_questions=interviewer.max_questions
+            total_expected_questions=interviewer.get_total_expected_questions(),
+            progress_percentage=interviewer.get_interview_progress()
         )
     
     except HTTPException as e:
@@ -266,6 +265,8 @@ def get_conversation_history(session_id: str):
             "session_id": session_id,
             "active": interviewer.is_interview_active(),
             "questions_asked": interviewer.get_questions_asked(),
+            "total_expected_questions": interviewer.get_total_expected_questions(),
+            "progress_percentage": interviewer.get_interview_progress(),
             "history": interviewer.get_conversation_history()
         }
     
@@ -280,7 +281,8 @@ def list_sessions():
             "last_access": session_data["last_access"],
             "interview_active": session_data["interviewer"].is_interview_active(),
             "questions_asked": session_data["interviewer"].get_questions_asked(),
-            "max_questions": session_data["interviewer"].max_questions
+            "total_expected_questions": session_data["interviewer"].get_total_expected_questions(),
+            "progress_percentage": session_data["interviewer"].get_interview_progress()
         }
         for session_id, session_data in session_manager.interviewers.items()
     }
