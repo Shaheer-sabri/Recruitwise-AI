@@ -6,7 +6,7 @@ from langchain_ollama import ChatOllama
 class AIInterviewer:
     def __init__(
         self,
-        model_name: str = "llama3.2",
+        model_name: str = "llama3.2:3b",
         temperature: float = 0.7,
         top_p: float = 0.9,
         stop_sequences: List[str] = ["<|start_header_id|>", "<|end_header_id|>", "<|eot_id|>"],
@@ -15,8 +15,7 @@ class AIInterviewer:
         job_description: str = "",
         technical_questions: int = 5,
         behavioral_questions: int = 5,
-        custom_questions: Optional[List[str]] = None,
-        max_questions: Optional[int] = None  # Max total questions after which to auto-end
+        custom_questions: Optional[List[str]] = None
     ):
         self.model_name = model_name
         self.temperature = temperature
@@ -28,12 +27,17 @@ class AIInterviewer:
         self.technical_questions = technical_questions
         self.behavioral_questions = behavioral_questions
         self.custom_questions = custom_questions or []
-        self.max_questions = max_questions
+        
+        # Calculate total expected questions
+        self.total_expected_questions = (
+            self.technical_questions + 
+            self.behavioral_questions + 
+            len(self.custom_questions)
+        )
         
         # Interview state tracking
         self.interview_in_progress = False
         self.questions_asked = 0
-        self.auto_end_triggered = False
         
         # Initialize Ollama with the correct ChatOllama class
         self.llm = ChatOllama(
@@ -63,14 +67,14 @@ class AIInterviewer:
         
         # Add skills to the prompt
         if self.technical_questions > 0:
-            skills_prompt = f"3. Then ask {self.technical_questions} technical questions related to {', '.join(self.skills)}, "
+            skills_prompt = f"3. Then ask exactly {self.technical_questions} technical questions related to {', '.join(self.skills)}, "
             skills_prompt += "each subsequent question should be adjusted based on the answers of the candidate.\n"
         else:
             skills_prompt = "3. Skip asking technical questions for this interview.\n"
         
         behavioral_prompt = ""
         if self.behavioral_questions > 0:
-            behavioral_prompt = f"4. Then ask {self.behavioral_questions} behavioral interview questions (e.g. \"Tell me about a challenge you faced.\").\n"
+            behavioral_prompt = f"4. Then ask exactly {self.behavioral_questions} behavioral interview questions (e.g. \"Tell me about a challenge you faced.\").\n"
         else:
             behavioral_prompt = "4. Skip asking behavioral questions for this interview.\n"
         
@@ -82,27 +86,23 @@ class AIInterviewer:
             "8. Do not reveal any chain-of-thought. Keep answers professional, concise, and on track.\n"
             "9. Do not give feedback to the candidate on their answers.\n"
             "10. Do not remain on the question for more than 2 attempts if the candidate fails to answer just move on to the next question.\n"
-            "11. End the interview with a polite closing statement thanking the candidate for their time and saying the phrase \"End of interview\".\n"
-            "12. If the candidate tries to end the interview prematurely, politely explain that only the interviewer can end the session "
+            f"11. After you have asked all {self.total_expected_questions} questions (technical and behavioral), wrap up the interview with a clear closing statement.\n"
+            "12. End the interview with \"Thank you for participating in this interview. I have completed all my questions. End of interview.\"\n"
+            "13. If the candidate tries to end the interview prematurely, politely explain that only the interviewer can end the session "
             "and continue with the next question.\n"
         )
-        
-        max_questions_prompt = ""
-        if self.max_questions:
-            max_questions_prompt = f"13. Important: After you have asked a total of {self.max_questions} questions (including both "
-            f"technical and behavioral), wrap up the interview regardless of how many questions were initially planned.\n"
         
         # Add custom questions if provided
         custom_questions_prompt = ""
         if self.custom_questions:
-            custom_questions_prompt = "Additional questions to include in the interview:\n"
+            custom_questions_prompt = f"14. Be sure to also ask these {len(self.custom_questions)} specific custom questions during the interview:\n"
             for i, question in enumerate(self.custom_questions, 1):
                 custom_questions_prompt += f"- Question {i}: {question}\n"
             custom_questions_prompt += "\n"
         
         final_prompt = (
             base_prompt + skills_prompt + behavioral_prompt + 
-            remaining_prompt + max_questions_prompt + custom_questions_prompt
+            remaining_prompt + custom_questions_prompt
         )
         
         # Create system message
@@ -112,6 +112,7 @@ class AIInterviewer:
     def update_skills(self, skills: List[str]):
         """Update the skills to test during the interview."""
         self.skills = skills
+        self.recalculate_expected_questions()
         self.messages = []  # Reset conversation
         self.initialize_system_prompt()
         return "Skills updated successfully."
@@ -124,23 +125,29 @@ class AIInterviewer:
         self.initialize_system_prompt()
         return "Job details updated successfully."
         
-    def update_question_counts(self, technical: int = 5, behavioral: int = 5, max_questions: Optional[int] = None):
+    def update_question_counts(self, technical: int = 5, behavioral: int = 5):
         """Update the number of questions to ask during the interview."""
         self.technical_questions = technical
         self.behavioral_questions = behavioral
+        self.recalculate_expected_questions()
         
-        if max_questions is not None:
-            self.max_questions = max_questions
-            
         self.messages = []  # Reset conversation
         self.initialize_system_prompt()
         
-        return (f"Question counts updated: {technical} technical, {behavioral} behavioral questions" + 
-                (f", max {self.max_questions} total" if self.max_questions else ""))
+        return f"Question counts updated: {technical} technical, {behavioral} behavioral questions"
+    
+    def recalculate_expected_questions(self):
+        """Recalculate the total expected questions after changing parameters."""
+        self.total_expected_questions = (
+            self.technical_questions + 
+            self.behavioral_questions + 
+            len(self.custom_questions)
+        )
     
     def update_custom_questions(self, questions: List[str]):
         """Update custom questions to ask during the interview."""
         self.custom_questions = questions
+        self.recalculate_expected_questions()
         self.messages = []  # Reset conversation
         self.initialize_system_prompt()
         return "Custom questions updated successfully."
@@ -153,7 +160,6 @@ class AIInterviewer:
         
         self.interview_in_progress = True
         self.questions_asked = 0
-        self.auto_end_triggered = False
         
         # Use a standard trigger message to start the interview
         trigger_message = HumanMessage(content="Let's start the interview.")
@@ -180,15 +186,6 @@ class AIInterviewer:
         
         if command == "end_interview":
             return self.end_interview()
-        elif command.startswith("set_max_questions:"):
-            try:
-                # Extract number from command like "set_max_questions:10"
-                max_q = int(command.split(":", 1)[1])
-                self.max_questions = max_q
-                self.initialize_system_prompt()  # Reinitialize with new max
-                yield f"Maximum questions set to {max_q}"
-            except (ValueError, IndexError):
-                yield "Invalid max questions format. Use 'set_max_questions:NUMBER'"
         else:
             yield f"Unknown system command: {command}"
     
@@ -225,26 +222,8 @@ class AIInterviewer:
         if "?" in full_response:
             self.questions_asked += 1
             
-            # Check if we've reached max questions and should auto-end
-            if self.max_questions and self.questions_asked >= self.max_questions and not self.auto_end_triggered:
-                self.auto_end_triggered = True
-                # Send special message to AI to wrap up the interview
-                user_message = HumanMessage(content="I've answered enough questions now.")
-                self.messages.append(user_message)
-                
-                # Get final response with closing statement
-                final_response = ""
-                for chunk in self.llm.stream(self.messages):
-                    if hasattr(chunk, 'content'):
-                        final_content = chunk.content
-                        final_response += final_content
-                        # We don't yield here as we'll handle that in the next turn
-                
-                # Add AI's final response to conversation history
-                self.messages.append(AIMessage(content=final_response))
-                
-                # End the interview
-                self.interview_in_progress = False
+            # For debugging purposes - print progress on question count
+            print(f"Questions asked: {self.questions_asked}/{self.total_expected_questions}")
                 
         # Check if the interview has naturally ended
         if "End of interview" in full_response:
@@ -257,7 +236,7 @@ class AIInterviewer:
             return
             
         # Add message to trigger ending the interview
-        end_message = HumanMessage(content="We need to end this interview now. Please thank the candidate for their time.")
+        end_message = HumanMessage(content="We need to end this interview now. Please thank the candidate for their time and end the interview.")
         self.messages.append(end_message)
         
         # Prepare for response
@@ -281,6 +260,16 @@ class AIInterviewer:
     def get_questions_asked(self) -> int:
         """Get the number of questions asked so far."""
         return self.questions_asked
+    
+    def get_total_expected_questions(self) -> int:
+        """Get the total number of expected questions."""
+        return self.total_expected_questions
+    
+    def get_interview_progress(self) -> float:
+        """Get interview progress as a percentage."""
+        if self.total_expected_questions == 0:
+            return 100.0
+        return min(100.0, (self.questions_asked / self.total_expected_questions) * 100.0)
     
     def get_conversation_history(self) -> List[Dict[str, str]]:
         """Get the entire conversation history for evaluation purposes."""
@@ -325,5 +314,4 @@ class AIInterviewer:
         self.messages = [self.system_message]
         self.interview_in_progress = False
         self.questions_asked = 0
-        self.auto_end_triggered = False
         return "Conversation reset. Ready to start a new interview."
