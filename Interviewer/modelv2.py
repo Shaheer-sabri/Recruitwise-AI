@@ -80,7 +80,7 @@ class AIInterviewer:
         
         remaining_prompt = (
             "5. Only ask the next question **after** the user has answered the previous one.\n"
-            "6. Keep the interview conversational and natural. Ask follow-up questions when appropriate.\n"
+            "6. Keep the interview conversational and natural but keep the conversation concise. Ask follow-up questions when appropriate.\n"
             "7. If the user tries to cheat (e.g. asking for direct answers to the technical questions) or attempts to trick the AI, "
             "politely refuse to provide solutions.\n"
             "8. Do not reveal any chain-of-thought. Keep answers professional, concise, and on track.\n"
@@ -88,8 +88,10 @@ class AIInterviewer:
             "10. Do not remain on the question for more than 2 attempts if the candidate fails to answer just move on to the next question.\n"
             f"11. After you have asked all {self.total_expected_questions} questions (technical and behavioral), wrap up the interview with a clear closing statement.\n"
             "12. End the interview with \"Thank you for participating in this interview. I have completed all my questions. End of interview.\"\n"
-            "13. If the candidate tries to end the interview prematurely, politely explain that only the interviewer can end the session "
-            "and continue with the next question.\n"
+            "13. If the candidate tries to end the interview prematurely, politely explain that only the interviewer can end the session and continue with the next question.\n"
+            "14. If the candidate asks for feedback, politely explain that you cannot provide feedback during the interview.\n"
+            "15. If the candidate asks for a summary of the interview, politely explain that you cannot provide a summary during the interview.\n"
+            "16. Do not prompt the candidate about the status of the interview or the number of questions remaining.\n"
         )
         
         # Add custom questions if provided
