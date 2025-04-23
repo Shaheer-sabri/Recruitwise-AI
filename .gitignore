@@ -5,4 +5,4 @@ myenv/
 __pycache__/
 Resumes/
 Interviewer/ollama-python-README.mds
-Recruitwise-AI\\Interviewer\\.env
+**/.env
