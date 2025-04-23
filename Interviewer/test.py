@@ -172,7 +172,7 @@ def render_setup_ui():
         st.markdown("### Model Settings")
         col1, col2, col3 = st.columns(3)
         with col1:
-            model_name = st.text_input("Model Name", value="llama3.2:3b")
+            model_name = st.text_input("Model Name", value="llama-3.3-70b-versatile")
         with col2:
             temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.7, step=0.1)
         with col3:

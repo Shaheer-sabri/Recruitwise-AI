@@ -3,17 +3,20 @@ from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uuid
 import asyncio
 from datetime import datetime, timedelta
 
 # Import your AIInterviewer class
-from modelv2 import AIInterviewer
+from model_groq import AIInterviewer
+
+# Predefined model name that cannot be changed by users
+FIXED_MODEL_NAME = "llama-3.3-70b-versatile"
 
 # Models for request/response
 class InterviewSettings(BaseModel):
-    model_name: str = "llama3.2:3b"
+    # Remove model_name from user-configurable settings
     temperature: float = 0.7
     top_p: float = 0.9
     skills: List[str] = ["data structures", "algorithms", "object-oriented programming"]
@@ -49,10 +52,10 @@ class SessionManager:
         """Create a new session with a unique ID and return the ID"""
         session_id = str(uuid.uuid4())
         
-        # Create interviewer with custom settings if provided
+        # Create interviewer with custom settings if provided, but always use the fixed model
         if settings:
             interviewer = AIInterviewer(
-                model_name=settings.model_name,
+                model_name=FIXED_MODEL_NAME,  # Always use predefined model
                 temperature=settings.temperature,
                 top_p=settings.top_p,
                 skills=settings.skills,
@@ -63,7 +66,7 @@ class SessionManager:
                 custom_questions=settings.custom_questions
             )
         else:
-            interviewer = AIInterviewer()
+            interviewer = AIInterviewer(model_name=FIXED_MODEL_NAME)  # Always use predefined model
         
         # Store interviewer and last access time
         self.interviewers[session_id] = {
@@ -206,11 +209,11 @@ def update_settings(session_id: str, settings: InterviewSettings):
         interviewer = session_manager.get_interviewer(session_id)
         messages = []
         
-        # Update model parameters
+        # Update model parameters but not the model name
         messages.append(interviewer.update_model_settings(
-            settings.temperature, 
-            settings.top_p, 
-            settings.model_name
+            temperature=settings.temperature, 
+            top_p=settings.top_p,
+            model=None  # Don't allow model name changes
         ))
         
         # Update job details
@@ -263,6 +266,7 @@ def get_conversation_history(session_id: str):
         interviewer = session_manager.get_interviewer(session_id)
         return {
             "session_id": session_id,
+            "model_name": FIXED_MODEL_NAME,  # Return fixed model name
             "active": interviewer.is_interview_active(),
             "questions_asked": interviewer.get_questions_asked(),
             "total_expected_questions": interviewer.get_total_expected_questions(),
@@ -278,6 +282,7 @@ def list_sessions():
     """List all active sessions and their last access times"""
     return {
         session_id: {
+            "model_name": FIXED_MODEL_NAME,  # Return fixed model name
             "last_access": session_data["last_access"],
             "interview_active": session_data["interviewer"].is_interview_active(),
             "questions_asked": session_data["interviewer"].get_questions_asked(),
@@ -302,6 +307,15 @@ def delete_session(session_id: str):
     
     except HTTPException as e:
         return {"error": e.detail}, e.status_code
+
+# Add an endpoint to get the model info
+@app.get("/model-info")
+def get_model_info():
+    """Return information about the fixed model being used"""
+    return {
+        "model_name": FIXED_MODEL_NAME,
+        "description": "Pre-configured large language model for interview simulations"
+    }
 
 # Main entry point
 if __name__ == "__main__":

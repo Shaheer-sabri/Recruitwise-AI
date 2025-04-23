@@ -1,12 +1,19 @@
 import os
 from typing import List, Dict, Any, Optional, Generator, Union, Tuple
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-from langchain_ollama import ChatOllama
+from langchain_groq import ChatGroq
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise ValueError("GROQ_API_KEY not found in environment variables. Please check your .env file.")
 
 class AIInterviewer:
     def __init__(
         self,
-        model_name: str = "llama3.2:3b",
+        model_name: str = "llama-3.3-70b-versatile",
         temperature: float = 0.7,
         top_p: float = 0.9,
         stop_sequences: List[str] = ["<|start_header_id|>", "<|end_header_id|>", "<|eot_id|>"],
@@ -17,10 +24,13 @@ class AIInterviewer:
         behavioral_questions: int = 5,
         custom_questions: Optional[List[str]] = None
     ):
+        # Model settings
         self.model_name = model_name
         self.temperature = temperature
         self.top_p = top_p
         self.stop_sequences = stop_sequences
+        
+        # Interview configuration
         self.skills = skills
         self.job_position = job_position
         self.job_description = job_description
@@ -39,18 +49,27 @@ class AIInterviewer:
         self.interview_in_progress = False
         self.questions_asked = 0
         
-        # Initialize Ollama with the correct ChatOllama class
-        self.llm = ChatOllama(
-            model=self.model_name,
-            temperature=self.temperature,
-            top_p=self.top_p,
-            stop=self.stop_sequences,
-            streaming=True  # Enable streaming
-        )
-        
         # Initialize conversation history
         self.messages = []
         self.initialize_system_prompt()
+        
+        # Initialize the LLM (done only once)
+        self.initialize_llm()
+        
+    def initialize_llm(self):
+        """Initialize the LLM with current settings."""
+        try:
+            self.llm = ChatGroq(
+                api_key=GROQ_API_KEY,
+                model=self.model_name,  # This is correct - 'model' is the alias for 'model_name'
+                temperature=self.temperature,
+                top_p=self.top_p,
+                stop=self.stop_sequences,  # 'stop' is the correct parameter name, not 'stop_sequences'
+                streaming=True
+            )
+        except Exception as e:
+            print(f"Error initializing ChatGroq: {str(e)}")
+            raise
         
     def initialize_system_prompt(self):
         """Create the system prompt with dynamic skills, job details, and custom questions."""
@@ -96,7 +115,7 @@ class AIInterviewer:
         # Add custom questions if provided
         custom_questions_prompt = ""
         if self.custom_questions:
-            custom_questions_prompt = f"14. Be sure to also ask these {len(self.custom_questions)} specific custom questions during the interview:\n"
+            custom_questions_prompt = f"17. Be sure to also ask these {len(self.custom_questions)} specific custom questions during the interview:\n"
             for i, question in enumerate(self.custom_questions, 1):
                 custom_questions_prompt += f"- Question {i}: {question}\n"
             custom_questions_prompt += "\n"
@@ -169,7 +188,7 @@ class AIInterviewer:
         # Prepare for response
         full_response = ""
         
-        # Get streaming response from Ollama
+        # Get streaming response from Groq
         for chunk in self.llm.stream(self.messages):
             if hasattr(chunk, 'content'):
                 content = chunk.content
@@ -209,7 +228,7 @@ class AIInterviewer:
         # Prepare for response
         full_response = ""
         
-        # Get streaming response from Ollama
+        # Get streaming response from Groq
         for chunk in self.llm.stream(self.messages):
             if hasattr(chunk, 'content'):
                 content = chunk.content
@@ -243,7 +262,7 @@ class AIInterviewer:
         # Prepare for response
         full_response = ""
         
-        # Get streaming response from Ollama
+        # Get streaming response from Groq
         for chunk in self.llm.stream(self.messages):
             if hasattr(chunk, 'content'):
                 content = chunk.content
@@ -292,21 +311,23 @@ class AIInterviewer:
         model: Optional[str] = None
     ) -> str:
         """Update model settings during runtime."""
-        if temperature is not None:
-            self.temperature = temperature
-        if top_p is not None:
-            self.top_p = top_p
-        if model is not None:
-            self.model_name = model
+        settings_changed = False
         
-        # Reinitialize the Ollama model with new settings
-        self.llm = ChatOllama(
-            model=self.model_name,
-            temperature=self.temperature,
-            top_p=self.top_p,
-            stop=self.stop_sequences,
-            streaming=True  # Maintain streaming capability
-        )
+        if temperature is not None and temperature != self.temperature:
+            self.temperature = temperature
+            settings_changed = True
+            
+        if top_p is not None and top_p != self.top_p:
+            self.top_p = top_p
+            settings_changed = True
+            
+        if model is not None and model != self.model_name:
+            self.model_name = model
+            settings_changed = True
+        
+        # Only reinitialize the model if settings changed
+        if settings_changed:
+            self.initialize_llm()
         
         return f"Updated model settings: {self.model_name}, temp={self.temperature}, top_p={self.top_p}"
     
