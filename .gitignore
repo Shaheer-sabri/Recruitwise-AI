@@ -5,4 +5,5 @@ myenv/
 __pycache__/
 Resumes/
 Interviewer/ollama-python-README.md
-Interviewer.env
+Interviewer
+.env
