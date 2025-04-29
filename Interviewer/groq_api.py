@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 import uuid
 import asyncio
 from datetime import datetime, timedelta
+import json
 
 # Import your AIInterviewer class
 from model_groq import AIInterviewer
@@ -19,8 +20,8 @@ class InterviewSettings(BaseModel):
     # Remove model_name from user-configurable settings
     temperature: float = 0.7
     top_p: float = 0.9
-    skills: List[str] = ["data structures", "algorithms", "object-oriented programming"]
-    job_position: str = "entry level developer"
+    skills: List[str] = []
+    job_position: str = ""
     job_description: str = ""
     technical_questions: int = 5
     behavioral_questions: int = 5
@@ -98,6 +99,39 @@ class SessionManager:
             del self.interviewers[session_id]
         
         return len(expired_sessions)
+    
+    def save_session_to_file(self, session_id: str, output_dir: str = "interview_sessions") -> str:
+        """Save a session's conversation history to a JSON file"""
+        if session_id not in self.interviewers:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Ensure the output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Get the interviewer instance
+        interviewer = self.interviewers[session_id]["interviewer"]
+        
+        # Get session info including conversation history
+        session_info = {
+            "session_id": session_id,
+            "model_name": FIXED_MODEL_NAME,
+            "active": interviewer.is_interview_active(),
+            "questions_asked": interviewer.get_questions_asked(),
+            "total_expected_questions": interviewer.get_total_expected_questions(),
+            "progress_percentage": interviewer.get_interview_progress(),
+            "history": interviewer.get_conversation_history()
+        }
+        
+        # Generate a filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"interview_{session_id[:8]}_{timestamp}.json"
+        filepath = os.path.join(output_dir, filename)
+        
+        # Write to file
+        with open(filepath, 'w') as f:
+            json.dump(session_info, f, indent=2)
+        
+        return filepath
 
 # Create FastAPI app
 app = FastAPI()
@@ -150,7 +184,7 @@ async def start_interview(session_id: str):
         
         # Check if an interview is already in progress
         if interviewer.is_interview_active():
-            return {"error": "Interview already in progress"}, 400
+            raise HTTPException(status_code=400, detail="Interview already in progress")
         
         # Create streaming response
         async def interview_stream():
@@ -163,7 +197,7 @@ async def start_interview(session_id: str):
         return StreamingResponse(interview_stream(), media_type="text/plain")
     
     except HTTPException as e:
-        return {"error": e.detail}, e.status_code
+        raise e
 
 @app.post("/chat/{session_id}")
 async def chat(session_id: str, chat_input: ChatMessage):
@@ -174,6 +208,10 @@ async def chat(session_id: str, chat_input: ChatMessage):
         # Verify the session ID in the path matches the one in the request body
         if session_id != chat_input.session_id:
             raise HTTPException(status_code=400, detail="Session ID mismatch")
+        
+        # Check if the interview is active
+        if not interviewer.is_interview_active():
+            raise HTTPException(status_code=400, detail="No active interview in this session. Please start an interview first.")
         
         # Handle the message based on type (system or user)
         async def response_stream():
@@ -186,7 +224,7 @@ async def chat(session_id: str, chat_input: ChatMessage):
         return StreamingResponse(response_stream(), media_type="text/plain")
     
     except HTTPException as e:
-        return {"error": e.detail}, e.status_code
+        raise e
 
 @app.post("/reset/{session_id}", response_model=SessionResponse)
 def reset_conversation(session_id: str):
@@ -200,13 +238,18 @@ def reset_conversation(session_id: str):
         )
     
     except HTTPException as e:
-        return {"error": e.detail}, e.status_code
+        raise e
 
 @app.post("/update-settings/{session_id}", response_model=SessionResponse)
 def update_settings(session_id: str, settings: InterviewSettings):
     """Update settings for a specific session"""
     try:
         interviewer = session_manager.get_interviewer(session_id)
+        
+        # Don't allow updating settings during an active interview
+        if interviewer.is_interview_active():
+            raise HTTPException(status_code=400, detail="Cannot update settings during an active interview")
+        
         messages = []
         
         # Update model parameters but not the model name
@@ -241,7 +284,7 @@ def update_settings(session_id: str, settings: InterviewSettings):
         )
     
     except HTTPException as e:
-        return {"error": e.detail}, e.status_code
+        raise e
 
 @app.get("/interview-status/{session_id}", response_model=InterviewStatus)
 def get_interview_status(session_id: str):
@@ -257,7 +300,7 @@ def get_interview_status(session_id: str):
         )
     
     except HTTPException as e:
-        return {"error": e.detail}, e.status_code
+        raise e
 
 @app.get("/conversation-history/{session_id}")
 def get_conversation_history(session_id: str):
@@ -275,7 +318,30 @@ def get_conversation_history(session_id: str):
         }
     
     except HTTPException as e:
-        return {"error": e.detail}, e.status_code
+        raise e
+
+@app.post("/save-session/{session_id}", response_model=SessionResponse)
+def save_session(session_id: str, background_tasks: BackgroundTasks):
+    """Save the session conversation to a file"""
+    try:
+        # This will run in the background so the API can respond immediately
+        def save_session_background(sid):
+            try:
+                filepath = session_manager.save_session_to_file(sid)
+                print(f"Session {sid} saved to {filepath}")
+            except Exception as e:
+                print(f"Error saving session {sid}: {str(e)}")
+        
+        # Add the task to the background tasks
+        background_tasks.add_task(save_session_background, session_id)
+        
+        return SessionResponse(
+            session_id=session_id,
+            message="Session saving initiated"
+        )
+    
+    except HTTPException as e:
+        raise e
 
 @app.get("/sessions")
 def list_sessions():
@@ -283,7 +349,7 @@ def list_sessions():
     return {
         session_id: {
             "model_name": FIXED_MODEL_NAME,  # Return fixed model name
-            "last_access": session_data["last_access"],
+            "last_access": session_data["last_access"].isoformat(),
             "interview_active": session_data["interviewer"].is_interview_active(),
             "questions_asked": session_data["interviewer"].get_questions_asked(),
             "total_expected_questions": session_data["interviewer"].get_total_expected_questions(),
@@ -293,20 +359,48 @@ def list_sessions():
     }
 
 @app.delete("/session/{session_id}", response_model=SessionResponse)
-def delete_session(session_id: str):
-    """Manually delete a session"""
+def delete_session(session_id: str, background_tasks: BackgroundTasks):
+    """Manually delete a session, saving it to a file first"""
     try:
         if session_id not in session_manager.interviewers:
             raise HTTPException(status_code=404, detail="Session not found")
         
+        # Save the session before deleting it
+        filepath = session_manager.save_session_to_file(session_id)
+        
+        # Then delete it
         del session_manager.interviewers[session_id]
+        
         return SessionResponse(
             session_id=session_id,
-            message="Session deleted successfully"
+            message=f"Session saved to {filepath} and deleted successfully"
         )
     
     except HTTPException as e:
-        return {"error": e.detail}, e.status_code
+        raise e
+
+@app.post("/end-interview/{session_id}", response_model=SessionResponse)
+async def end_interview(session_id: str):
+    """Explicitly end an interview by admin command"""
+    try:
+        interviewer = session_manager.get_interviewer(session_id)
+        
+        # Check if an interview is actually in progress
+        if not interviewer.is_interview_active():
+            raise HTTPException(status_code=400, detail="No active interview to end")
+        
+        # Use the system command to end the interview
+        response_content = ""
+        for chunk in interviewer.chat("[SYSTEM ADMIN COMMAND: TERMINATE INTERVIEW]", message_type="system"):
+            response_content += chunk
+        
+        return SessionResponse(
+            session_id=session_id,
+            message="Interview ended successfully"
+        )
+    
+    except HTTPException as e:
+        raise e
 
 # Add an endpoint to get the model info
 @app.get("/model-info")
@@ -316,6 +410,20 @@ def get_model_info():
         "model_name": FIXED_MODEL_NAME,
         "description": "Pre-configured large language model for interview simulations"
     }
+
+# Add an endpoint to get security and cheat attempt information
+@app.get("/security-info/{session_id}")
+def get_security_info(session_id: str):
+    """Get information about potential cheat attempts in the session"""
+    try:
+        interviewer = session_manager.get_interviewer(session_id)
+        return {
+            "session_id": session_id,
+            "potential_cheat_attempts": interviewer.get_cheat_attempts(),
+            "active": interviewer.is_interview_active()
+        }
+    except HTTPException as e:
+        raise e
 
 # Main entry point
 if __name__ == "__main__":

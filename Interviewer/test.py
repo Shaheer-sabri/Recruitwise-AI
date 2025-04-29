@@ -28,6 +28,10 @@ if 'username' not in st.session_state:
 # Helper Functions
 def create_session(settings):
     """Create a new interview session"""
+    # Remove model_name from settings since it's fixed on server
+    if "model_name" in settings:
+        del settings["model_name"]
+        
     response = requests.post(f"{API_URL}/create-session", json=settings)
     if response.status_code == 200:
         data = response.json()
@@ -102,8 +106,8 @@ def send_message(session_id, message, message_type="user"):
         # Add to message history
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         
-        # Check if interview has ended
-        if "End of interview" in full_response:
+        # Check if interview has ended (using the updated ending detection)
+        if full_response.strip().endswith("End of interview.") or "End of interview" in full_response[-30:]:
             st.session_state.interview_active = False
             st.balloons()  # Celebrate the end of the interview!
         
@@ -146,6 +150,10 @@ def reset_conversation(session_id):
 
 def update_settings(session_id, settings):
     """Update interview settings"""
+    # Remove model_name from settings since it's fixed on server
+    if "model_name" in settings:
+        del settings["model_name"]
+        
     response = requests.post(f"{API_URL}/update-settings/{session_id}", json=settings)
     if response.status_code == 200:
         st.success("Settings updated successfully!")
@@ -163,19 +171,62 @@ def get_conversation_history(session_id):
         st.error(f"Error getting conversation history: {response.text}")
         return None
 
+def save_session(session_id):
+    """Save the session to a file on the server"""
+    response = requests.post(f"{API_URL}/save-session/{session_id}")
+    if response.status_code == 200:
+        st.success("Session saved successfully!")
+        return True
+    else:
+        st.error(f"Error saving session: {response.text}")
+        return False
+
+def end_interview(session_id):
+    """Explicitly end the interview"""
+    response = requests.post(f"{API_URL}/end-interview/{session_id}")
+    if response.status_code == 200:
+        st.session_state.interview_active = False
+        st.success("Interview ended successfully!")
+        get_interview_status(session_id)
+        return True
+    else:
+        st.error(f"Error ending interview: {response.text}")
+        return False
+
+def get_security_info(session_id):
+    """Get security information about the session"""
+    response = requests.get(f"{API_URL}/security-info/{session_id}")
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.error(f"Error getting security info: {response.text}")
+        return None
+
+def get_model_info():
+    """Get information about the AI model being used"""
+    response = requests.get(f"{API_URL}/model-info")
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.error(f"Error getting model info: {response.text}")
+        return None
+
 # UI Components
 def render_setup_ui():
     """Render the setup UI for configuring the interview"""
     st.subheader("Interview Setup")
     
+    # Get model info once at the beginning to display
+    model_info = get_model_info()
+    if model_info:
+        st.info(f"Using fixed model: {model_info['model_name']}")
+    
     with st.form("interview_settings"):
         st.markdown("### Model Settings")
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
-            model_name = st.text_input("Model Name", value="llama-3.3-70b-versatile")
-        with col2:
             temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.7, step=0.1)
-        with col3:
+        with col2:
             top_p = st.slider("Top P", min_value=0.0, max_value=1.0, value=0.9, step=0.1)
         
         st.markdown("### Job Details")
@@ -188,13 +239,13 @@ def render_setup_ui():
         st.markdown("### Questions")
         col1, col2 = st.columns(2)
         with col1:
-            technical_questions = st.number_input("Technical Questions", min_value=0, max_value=20, value=5)
+            technical_questions = st.number_input("Technical Questions", min_value=0, max_value=20, value=3)
         with col2:
-            behavioral_questions = st.number_input("Behavioral Questions", min_value=0, max_value=20, value=5)
+            behavioral_questions = st.number_input("Behavioral Questions", min_value=0, max_value=20, value=2)
         
         st.markdown("### Skills to Test")
         skills = st.text_area("Skills (one per line)", 
-                              value="data structures\nalgorithms\nobject-oriented programming", 
+                              value="Python\nSQL\nAPI design\nData structures", 
                               height=100)
         
         st.markdown("### Custom Questions")
@@ -211,7 +262,6 @@ def render_setup_ui():
             
             # Create settings object
             settings = {
-                "model_name": model_name,
                 "temperature": temperature,
                 "top_p": top_p,
                 "job_position": job_position,
@@ -257,7 +307,7 @@ def render_interview_ui():
                 st.rerun()
         else:
             if st.button("End Interview", use_container_width=True):
-                send_message(st.session_state.session_id, "end_interview", message_type="system")
+                end_interview(st.session_state.session_id)
                 st.rerun()
     
     with col2:
@@ -266,7 +316,9 @@ def render_interview_ui():
                 st.rerun()
     
     with col3:
-        if st.button("Setup New Interview", use_container_width=True):
+        if st.button("Save & Start New", use_container_width=True):
+            if st.session_state.session_id:
+                save_session(st.session_state.session_id)
             st.session_state.session_id = None
             st.session_state.messages = []
             st.session_state.interview_active = False
@@ -301,6 +353,12 @@ def render_admin_tools():
         st.sidebar.info(f"Questions Asked: {st.session_state.question_count}/{st.session_state.total_questions}")
         st.sidebar.info(f"Progress: {st.session_state.progress_percentage:.1f}%")
         
+        # Security info
+        security_info = get_security_info(st.session_state.session_id)
+        if security_info:
+            st.sidebar.markdown("### Security Information")
+            st.sidebar.info(f"Potential Cheat Attempts: {security_info['potential_cheat_attempts']}")
+        
         # Conversation history button
         if st.sidebar.button("Get Conversation History"):
             history = get_conversation_history(st.session_state.session_id)
@@ -322,13 +380,19 @@ def render_admin_tools():
                     mime="application/json"
                 )
         
-        # System commands
-        st.sidebar.subheader("System Commands")
-        system_command = st.sidebar.text_input("Send system command")
-        if st.sidebar.button("Send Command"):
-            if system_command:
-                response = send_message(st.session_state.session_id, system_command, message_type="system")
-                st.sidebar.success(f"Command response: {response}")
+        # Save session button
+        if st.sidebar.button("Save Session"):
+            save_session(st.session_state.session_id)
+        
+        # System commands for admins
+        st.sidebar.subheader("Administrator Commands")
+        admin_password = st.sidebar.text_input("Admin Password", type="password")
+        if admin_password == "admin123":  # Very simple password for testing only
+            system_command = st.sidebar.text_input("Send system command")
+            if st.sidebar.button("Send Command"):
+                if system_command:
+                    response = send_message(st.session_state.session_id, system_command, message_type="system")
+                    st.sidebar.success(f"Command sent")
 
 # Main App
 def main():
@@ -340,6 +404,24 @@ def main():
     )
     
     st.title("AI Interviewer Test Application")
+    
+    # Add information about the app
+    with st.expander("About this application"):
+        st.markdown("""
+        This is a testing interface for the AI Interviewer system. The AI interviewer conducts technical and behavioral interviews
+        for job candidates, asking questions and following up based on their responses.
+        
+        **Features:**
+        - Behavioral questions are asked first, followed by technical questions
+        - The AI uses cross-questioning to probe deeper into candidate answers
+        - The interview ends with a natural, professional conclusion
+        - Security features prevent candidates from cheating or extracting answers
+        
+        **Usage:**
+        1. Set up an interview with your preferred settings
+        2. Start the interview and answer questions as a candidate would
+        3. Admin tools are available in the sidebar for testing and monitoring
+        """)
     
     # Render appropriate UI based on state
     if not st.session_state.session_id:
