@@ -3,7 +3,7 @@ import os
 
 def test_check_eligibility():
     url = "http://127.0.0.1:8000/check-eligibility/"
-    resume_file_path = "C:\\Users\\zuhai\\Desktop\\fyp\\Resumes\\MuhammadSiddiqueKhatri_CV-1.pdf"
+    resume_file_path = "C:\\Users\\zuhai\\Desktop\\resume.pdf"
     
     # Log file details before opening
     print(f"TESTER: Checking if file exists: {os.path.exists(resume_file_path)}")
