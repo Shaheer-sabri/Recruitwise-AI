@@ -411,15 +411,15 @@ def get_model_info():
         "description": "Pre-configured large language model for interview simulations"
     }
 
-# Add an endpoint to get security and cheat attempt information
+# Modified security info endpoint that doesn't rely on get_cheat_attempts()
 @app.get("/security-info/{session_id}")
 def get_security_info(session_id: str):
-    """Get information about potential cheat attempts in the session"""
+    """Get information about the interview session security status"""
     try:
         interviewer = session_manager.get_interviewer(session_id)
         return {
             "session_id": session_id,
-            "potential_cheat_attempts": interviewer.get_cheat_attempts(),
+            "potential_cheat_attempts": 0,  # Hardcoded to 0 since we removed that functionality
             "active": interviewer.is_interview_active()
         }
     except HTTPException as e:
