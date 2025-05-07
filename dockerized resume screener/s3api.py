@@ -139,7 +139,6 @@ async def analyze_resume(
             "success": False, 
             "error": str(e),
             "traceback": traceback.format_exc(),
-            "processing_time": round(time.time() - start_time, 2)
         }
         
         return JSONResponse(content=error_response, status_code=500)
@@ -151,4 +150,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=4000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
