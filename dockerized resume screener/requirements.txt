@@ -1,9 +1,9 @@
-fastapi==0.103.1
-uvicorn==0.23.2
+fastapi
+uvicorn
 python-multipart==0.0.6
-pdfplumber==0.10.1
+pdfplumber
 # Not specifying torch here since we use the base image
 sentence-transformers
-nltk==3.8.1
-numpy==1.25.2
+nltk
+numpy
 boto3
