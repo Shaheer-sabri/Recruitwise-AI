@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import json
 
 # Import your AIInterviewer class
-from modelv3 import AIInterviewer
+from model_groq import AIInterviewer
 
 # Predefined model name that cannot be changed by users
 FIXED_MODEL_NAME = "llama-3.3-70b-versatile"
