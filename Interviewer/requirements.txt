@@ -1,23 +1,33 @@
-transformers
-numpy
-scipy
-webrtcvad-wheels
-openai
-langchain
-langchain-groq
-langchain-ollama
-langchain-core
-langchain-community
-langchain_text_splitters
-unstructured
-fastembed
-pdfplumber
-sentence-transformers
-ollama
-nltk
-sentence_transformers
+# transformers
+# numpy
+# scipy
+# webrtcvad-wheels
+# openai
+# langchain
+# langchain-groq
+# langchain-ollama
+# langchain-core
+# langchain-community
+# langchain_text_splitters
+# unstructured
+# fastembed
+# pdfplumber
+# sentence-transformers
+# ollama
+# nltk
+# sentence_transformers
+# fastapi
+# uvicorn
+# python-multipart
+#langchain-embeddings
+#                   updated file from here
 fastapi
 uvicorn
-python-multipart
-#langchain-embeddings
-#updated file
+pydantic
+python-dotenv
+langchain-core
+langchain-groq
+langchain-ollama
+streamlit
+requests
+asyncio
