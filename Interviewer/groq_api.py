@@ -4,7 +4,6 @@ from fastapi import FastAPI, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-import uuid
 import asyncio
 from datetime import datetime, timedelta
 import json
@@ -50,10 +49,12 @@ class SessionManager:
         self.interviewers: Dict[str, Dict[str, Any]] = {}
         self.session_timeout = timedelta(minutes=session_timeout_minutes)
     
-    def create_session(self, settings: Optional[InterviewSettings] = None) -> str:
-        """Create a new session with a unique ID and return the ID"""
-        session_id = str(uuid.uuid4())
-        
+    def create_session(self, session_id: str, settings: Optional[InterviewSettings] = None) -> str:
+        """Create a new session with the provided session ID"""
+        # Check if session ID already exists
+        if session_id in self.interviewers:
+            raise HTTPException(status_code=400, detail="Session ID already exists")
+            
         # Create interviewer with custom settings if provided, but always use the fixed model
         if settings:
             # Initialize AIInterviewer with all settings including candidate_name
@@ -170,13 +171,13 @@ async def start_cleanup_task():
     asyncio.create_task(cleanup_periodically())
 
 # Endpoints
-@app.post("/create-session", response_model=SessionResponse)
-async def create_session(settings: InterviewSettings = None):
-    """Create a new session with optional custom settings"""
+@app.post("/create-session/{session_id}", response_model=SessionResponse)
+async def create_session(session_id: str, settings: InterviewSettings = None):
+    """Create a new session with the provided session ID and optional custom settings"""
     # This is where initialization is done - session_manager.create_session handles it
-    session_id = session_manager.create_session(settings)
+    created_session_id = session_manager.create_session(session_id, settings)
     return SessionResponse(
-        session_id=session_id,
+        session_id=created_session_id,
         message="Session created successfully"
     )
 
@@ -246,7 +247,7 @@ def reset_conversation(session_id: str):
 
 # The update-settings endpoint code is commented out as per requirement #2
 # It may be used later in production
-
+# """
 # @app.post("/update-settings/{session_id}", response_model=SessionResponse)
 # def update_settings(session_id: str, settings: InterviewSettings):
 #     # Update settings for a specific session
@@ -289,7 +290,7 @@ def reset_conversation(session_id: str):
     
 #     except HTTPException as e:
 #         raise e
-#
+# """
 
 @app.get("/interview-status/{session_id}", response_model=InterviewStatus)
 def get_interview_status(session_id: str):

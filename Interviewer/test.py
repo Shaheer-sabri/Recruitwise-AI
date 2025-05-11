@@ -24,13 +24,17 @@ if 'candidate_name' not in st.session_state:
     st.session_state.candidate_name = ""
 
 # Helper Functions
-def create_session(settings):
-    """Create a new interview session"""
+def create_session(settings, session_id=None):
+    """Create a new interview session with a client-generated ID"""
     # Remove model_name from settings since it's fixed on server
     if "model_name" in settings:
         del settings["model_name"]
+    
+    # Generate a session ID if not provided
+    if session_id is None:
+        session_id = str(uuid.uuid4())
         
-    response = requests.post(f"{API_URL}/create-session", json=settings)
+    response = requests.post(f"{API_URL}/create-session/{session_id}", json=settings)
     if response.status_code == 200:
         data = response.json()
         return data["session_id"]
@@ -125,7 +129,6 @@ def get_interview_status(session_id):
         st.session_state.interview_active = data["active"]
         st.session_state.question_count = data["questions_asked"]
         st.session_state.total_questions = data["total_expected_questions"]
-        # progress_percentage has been removed from the API
         return data
     else:
         st.error(f"Error getting interview status: {response.text}")
@@ -220,6 +223,14 @@ def render_setup_ui():
         st.info(f"Using fixed model: {model_info['model_name']}")
     
     with st.form("interview_settings"):
+        # Option to provide custom session ID or generate one
+        use_custom_id = st.checkbox("Use custom session ID", value=False,
+                                 help="Check this to provide your own session ID. Otherwise, a UUID will be generated.")
+        
+        if use_custom_id:
+            custom_session_id = st.text_input("Session ID", value="", 
+                                           help="Provide a unique identifier for this session")
+        
         st.markdown("### Model Settings")
         col1, col2 = st.columns(2)
         with col1:
@@ -279,11 +290,16 @@ def render_setup_ui():
                 "candidate_name": candidate_name  # Add candidate name to the settings
             }
             
+            # Determine session ID
+            session_id = None
+            if use_custom_id and custom_session_id:
+                session_id = custom_session_id
+            
             # Create session
-            session_id = create_session(settings)
-            if session_id:
-                st.session_state.session_id = session_id
-                st.success(f"Session created: {session_id}")
+            created_session_id = create_session(settings, session_id)
+            if created_session_id:
+                st.session_state.session_id = created_session_id
+                st.success(f"Session created: {created_session_id}")
                 st.rerun()
 
 def render_interview_ui():
@@ -293,7 +309,7 @@ def render_interview_ui():
     # Show session info
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.info(f"Session ID: {st.session_state.session_id[:8]}...")
+        st.info(f"Session ID: {st.session_state.session_id}")
     with col2:
         status_text = "Active" if st.session_state.interview_active else "Not Started"
         if st.session_state.interview_active:
@@ -361,6 +377,7 @@ def render_admin_tools():
     if st.session_state.session_id:
         # Session stats in sidebar
         st.sidebar.markdown("### Session Statistics")
+        st.sidebar.info(f"Session ID: {st.session_state.session_id}")
         st.sidebar.info(f"Questions Asked: {st.session_state.question_count}/{st.session_state.total_questions}")
         
         # Calculate progress percentage manually
@@ -395,7 +412,7 @@ def render_admin_tools():
                 st.sidebar.download_button(
                     label="Download Conversation",
                     data=history_json,
-                    file_name=f"interview_{st.session_state.session_id[:8]}.json",
+                    file_name=f"interview_{st.session_state.session_id}.json",
                     mime="application/json"
                 )
         
@@ -431,6 +448,7 @@ def main():
         for job candidates, asking questions and following up based on their responses.
         
         **Features:**
+        - Option to specify your own session ID or generate one automatically
         - Enter candidate name upfront - AI will greet them by name
         - Behavioral questions are asked first, followed by technical questions
         - The AI uses cross-questioning to probe deeper into candidate answers
