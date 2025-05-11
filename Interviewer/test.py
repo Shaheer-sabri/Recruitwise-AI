@@ -239,9 +239,10 @@ def render_setup_ui():
         st.markdown("### Questions")
         col1, col2 = st.columns(2)
         with col1:
-            technical_questions = st.number_input("Technical Questions", min_value=0, max_value=20, value=3)
+            # Note: Updated order - behavioral questions first, then technical
+            behavioral_questions = st.number_input("Behavioral Questions", min_value=0, max_value=20, value=3)
         with col2:
-            behavioral_questions = st.number_input("Behavioral Questions", min_value=0, max_value=20, value=2)
+            technical_questions = st.number_input("Technical Questions", min_value=0, max_value=20, value=2)
         
         st.markdown("### Skills to Test")
         skills = st.text_area("Skills (one per line)", 

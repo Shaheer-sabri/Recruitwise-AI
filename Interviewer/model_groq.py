@@ -1,3 +1,5 @@
+# Production Script
+
 import os
 from typing import List, Dict, Any, Optional, Generator, Union, Tuple
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
@@ -20,8 +22,8 @@ class AIInterviewer:
         skills: List[str] = ["data structures", "algorithms", "object-oriented programming"],
         job_position: str = "entry level developer",
         job_description: str = "",
-        technical_questions: int = 5,
-        behavioral_questions: int = 5,
+        technical_questions: int = 4,
+        behavioral_questions: int = 3,
         custom_questions: Optional[List[str]] = None
     ):
         # Model settings
@@ -80,7 +82,7 @@ class AIInterviewer:
             f"{job_description_text}"
             "Your goals and instructions:\n\n"
             "1. Start by introducing yourself exactly with this greeting: \"Hi, I am Mia, your interviewer. "
-            f"Welcome to your interview for the {self.job_position} position. Could you please tell me your name?\"\n"
+            f"Welcome to your interview for the {self.job_position} position. Great the user with their name {self.candidate_name}.\"\n"
             "2. After learning the candidate's name, ask a few personal questions (e.g. \"How are you today?\", \"What interests you in this role?\").\n"
         )
         
