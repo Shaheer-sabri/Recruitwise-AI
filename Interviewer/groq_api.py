@@ -20,12 +20,13 @@ class InterviewSettings(BaseModel):
     # Remove model_name from user-configurable settings
     temperature: float = 0.7
     top_p: float = 0.9
-    skills: List[str] = []
-    job_position: str = ""
+    skills: List[str] = []  # Empty array instead of placeholder
+    job_position: str = ""  # Empty string instead of placeholder
     job_description: str = ""
-    technical_questions: int = 5
-    behavioral_questions: int = 5
+    technical_questions: int = 5  # Default is 5
+    behavioral_questions: int = 3  # Default is 3
     custom_questions: Optional[List[str]] = None
+    candidate_name: str = ""  # Added candidate_name field
 
 class ChatMessage(BaseModel):
     message: str
@@ -41,7 +42,7 @@ class InterviewStatus(BaseModel):
     active: bool
     questions_asked: int
     total_expected_questions: int
-    progress_percentage: float
+    # Removed progress_percentage field
 
 # Session management
 class SessionManager:
@@ -55,6 +56,7 @@ class SessionManager:
         
         # Create interviewer with custom settings if provided, but always use the fixed model
         if settings:
+            # Initialize AIInterviewer with all settings including candidate_name
             interviewer = AIInterviewer(
                 model_name=FIXED_MODEL_NAME,  # Always use predefined model
                 temperature=settings.temperature,
@@ -64,9 +66,11 @@ class SessionManager:
                 job_description=settings.job_description,
                 technical_questions=settings.technical_questions,
                 behavioral_questions=settings.behavioral_questions,
-                custom_questions=settings.custom_questions
+                custom_questions=settings.custom_questions,
+                candidate_name=settings.candidate_name  # Pass candidate name to AIInterviewer
             )
         else:
+            # Initialize with defaults and fixed model
             interviewer = AIInterviewer(model_name=FIXED_MODEL_NAME)  # Always use predefined model
         
         # Store interviewer and last access time
@@ -111,14 +115,13 @@ class SessionManager:
         # Get the interviewer instance
         interviewer = self.interviewers[session_id]["interviewer"]
         
-        # Get session info including conversation history
+        # Get session info including conversation history - removed progress_percentage
         session_info = {
             "session_id": session_id,
             "model_name": FIXED_MODEL_NAME,
             "active": interviewer.is_interview_active(),
             "questions_asked": interviewer.get_questions_asked(),
             "total_expected_questions": interviewer.get_total_expected_questions(),
-            "progress_percentage": interviewer.get_interview_progress(),
             "history": interviewer.get_conversation_history()
         }
         
@@ -170,6 +173,7 @@ async def start_cleanup_task():
 @app.post("/create-session", response_model=SessionResponse)
 async def create_session(settings: InterviewSettings = None):
     """Create a new session with optional custom settings"""
+    # This is where initialization is done - session_manager.create_session handles it
     session_id = session_manager.create_session(settings)
     return SessionResponse(
         session_id=session_id,
@@ -240,51 +244,52 @@ def reset_conversation(session_id: str):
     except HTTPException as e:
         raise e
 
-@app.post("/update-settings/{session_id}", response_model=SessionResponse)
-def update_settings(session_id: str, settings: InterviewSettings):
-    """Update settings for a specific session"""
-    try:
-        interviewer = session_manager.get_interviewer(session_id)
+# The update-settings endpoint code is commented out as per requirement #2
+# It may be used later in production
+
+# @app.post("/update-settings/{session_id}", response_model=SessionResponse)
+# def update_settings(session_id: str, settings: InterviewSettings):
+#     # Update settings for a specific session
+#     try:
+#         interviewer = session_manager.get_interviewer(session_id)
         
-        # Don't allow updating settings during an active interview
-        if interviewer.is_interview_active():
-            raise HTTPException(status_code=400, detail="Cannot update settings during an active interview")
+#         # Don't allow updating settings during an active interview
+#         if interviewer.is_interview_active():
+#             raise HTTPException(status_code=400, detail="Cannot update settings during an active interview")
         
-        messages = []
+#         messages = []
         
-        # Update model parameters but not the model name
-        messages.append(interviewer.update_model_settings(
-            temperature=settings.temperature, 
-            top_p=settings.top_p,
-            model=None  # Don't allow model name changes
-        ))
+#         # Update job details
+#         messages.append(interviewer.update_job_details(
+#             settings.job_position,
+#             settings.job_description
+#         ))
         
-        # Update job details
-        messages.append(interviewer.update_job_details(
-            settings.job_position,
-            settings.job_description
-        ))
+#         # Update question counts
+#         messages.append(interviewer.update_question_counts(
+#             settings.technical_questions,
+#             settings.behavioral_questions
+#         ))
         
-        # Update question counts
-        messages.append(interviewer.update_question_counts(
-            settings.technical_questions,
-            settings.behavioral_questions
-        ))
+#         # Update skills
+#         messages.append(interviewer.update_skills(settings.skills))
         
-        # Update skills
-        messages.append(interviewer.update_skills(settings.skills))
+#         # Update custom questions if provided
+#         if settings.custom_questions:
+#             messages.append(interviewer.update_custom_questions(settings.custom_questions))
+            
+#         # Update candidate name if provided
+#         if settings.candidate_name:
+#             messages.append(interviewer.update_candidate_name(settings.candidate_name))
         
-        # Update custom questions if provided
-        if settings.custom_questions:
-            messages.append(interviewer.update_custom_questions(settings.custom_questions))
-        
-        return SessionResponse(
-            session_id=session_id,
-            message="; ".join(messages)
-        )
+#         return SessionResponse(
+#             session_id=session_id,
+#             message="; ".join(messages)
+#         )
     
-    except HTTPException as e:
-        raise e
+#     except HTTPException as e:
+#         raise e
+#
 
 @app.get("/interview-status/{session_id}", response_model=InterviewStatus)
 def get_interview_status(session_id: str):
@@ -295,8 +300,8 @@ def get_interview_status(session_id: str):
             session_id=session_id,
             active=interviewer.is_interview_active(),
             questions_asked=interviewer.get_questions_asked(),
-            total_expected_questions=interviewer.get_total_expected_questions(),
-            progress_percentage=interviewer.get_interview_progress()
+            total_expected_questions=interviewer.get_total_expected_questions()
+            # Removed progress_percentage field
         )
     
     except HTTPException as e:
@@ -313,7 +318,7 @@ def get_conversation_history(session_id: str):
             "active": interviewer.is_interview_active(),
             "questions_asked": interviewer.get_questions_asked(),
             "total_expected_questions": interviewer.get_total_expected_questions(),
-            "progress_percentage": interviewer.get_interview_progress(),
+            # Removed progress_percentage field
             "history": interviewer.get_conversation_history()
         }
     
@@ -353,7 +358,7 @@ def list_sessions():
             "interview_active": session_data["interviewer"].is_interview_active(),
             "questions_asked": session_data["interviewer"].get_questions_asked(),
             "total_expected_questions": session_data["interviewer"].get_total_expected_questions(),
-            "progress_percentage": session_data["interviewer"].get_interview_progress()
+            # Removed progress_percentage field
         }
         for session_id, session_data in session_manager.interviewers.items()
     }

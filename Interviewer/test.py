@@ -20,10 +20,8 @@ if 'question_count' not in st.session_state:
     st.session_state.question_count = 0
 if 'total_questions' not in st.session_state:
     st.session_state.total_questions = 0
-if 'progress_percentage' not in st.session_state:
-    st.session_state.progress_percentage = 0
-if 'username' not in st.session_state:
-    st.session_state.username = ""
+if 'candidate_name' not in st.session_state:
+    st.session_state.candidate_name = ""
 
 # Helper Functions
 def create_session(settings):
@@ -127,7 +125,7 @@ def get_interview_status(session_id):
         st.session_state.interview_active = data["active"]
         st.session_state.question_count = data["questions_asked"]
         st.session_state.total_questions = data["total_expected_questions"]
-        st.session_state.progress_percentage = data["progress_percentage"]
+        # progress_percentage has been removed from the API
         return data
     else:
         st.error(f"Error getting interview status: {response.text}")
@@ -141,26 +139,26 @@ def reset_conversation(session_id):
         st.session_state.interview_active = False
         st.session_state.question_count = 0
         st.session_state.total_questions = 0
-        st.session_state.progress_percentage = 0
         st.success("Interview reset successfully!")
         return True
     else:
         st.error(f"Error resetting interview: {response.text}")
         return False
 
-def update_settings(session_id, settings):
-    """Update interview settings"""
-    # Remove model_name from settings since it's fixed on server
-    if "model_name" in settings:
-        del settings["model_name"]
-        
-    response = requests.post(f"{API_URL}/update-settings/{session_id}", json=settings)
-    if response.status_code == 200:
-        st.success("Settings updated successfully!")
-        return True
-    else:
-        st.error(f"Error updating settings: {response.text}")
-        return False
+# Update settings function commented out as it's been removed from the API
+# def update_settings(session_id, settings):
+#     """Update interview settings"""
+#     # Remove model_name from settings since it's fixed on server
+#     if "model_name" in settings:
+#         del settings["model_name"]
+#         
+#     response = requests.post(f"{API_URL}/update-settings/{session_id}", json=settings)
+#     if response.status_code == 200:
+#         st.success("Settings updated successfully!")
+#         return True
+#     else:
+#         st.error(f"Error updating settings: {response.text}")
+#         return False
 
 def get_conversation_history(session_id):
     """Get the full conversation history"""
@@ -229,24 +227,28 @@ def render_setup_ui():
         with col2:
             top_p = st.slider("Top P", min_value=0.0, max_value=1.0, value=0.9, step=0.1)
         
+        st.markdown("### Candidate Information")
+        candidate_name = st.text_input("Candidate Name", value="", 
+                                      help="Enter the candidate's name. The AI will greet them by name instead of asking.")
+        
         st.markdown("### Job Details")
         col1, col2 = st.columns(2)
         with col1:
-            job_position = st.text_input("Job Position", value="entry level developer")
+            job_position = st.text_input("Job Position", value="")
         with col2:
             job_description = st.text_area("Job Description", value="", height=100)
         
         st.markdown("### Questions")
         col1, col2 = st.columns(2)
         with col1:
-            # Note: Updated order - behavioral questions first, then technical
+            # Note: behavioral questions first, then technical
             behavioral_questions = st.number_input("Behavioral Questions", min_value=0, max_value=20, value=3)
         with col2:
-            technical_questions = st.number_input("Technical Questions", min_value=0, max_value=20, value=2)
+            technical_questions = st.number_input("Technical Questions", min_value=0, max_value=20, value=5)
         
         st.markdown("### Skills to Test")
         skills = st.text_area("Skills (one per line)", 
-                              value="Python\nSQL\nAPI design\nData structures", 
+                              value="", 
                               height=100)
         
         st.markdown("### Custom Questions")
@@ -257,6 +259,9 @@ def render_setup_ui():
         submitted = st.form_submit_button("Create Session")
         
         if submitted:
+            # Store candidate name in session state
+            st.session_state.candidate_name = candidate_name
+            
             # Parse skills and custom questions
             skills_list = [s.strip() for s in skills.split('\n') if s.strip()]
             custom_questions_list = [q.strip() for q in custom_questions.split('\n') if q.strip()]
@@ -270,7 +275,8 @@ def render_setup_ui():
                 "technical_questions": technical_questions,
                 "behavioral_questions": behavioral_questions,
                 "skills": skills_list,
-                "custom_questions": custom_questions_list if custom_questions_list else None
+                "custom_questions": custom_questions_list if custom_questions_list else None,
+                "candidate_name": candidate_name  # Add candidate name to the settings
             }
             
             # Create session
@@ -285,7 +291,7 @@ def render_interview_ui():
     st.subheader("AI Interview Session")
     
     # Show session info
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.info(f"Session ID: {st.session_state.session_id[:8]}...")
     with col2:
@@ -293,11 +299,15 @@ def render_interview_ui():
         if st.session_state.interview_active:
             status_text += f" - {st.session_state.question_count}/{st.session_state.total_questions} questions"
         st.info(f"Status: {status_text}")
+    with col3:
+        if st.session_state.candidate_name:
+            st.info(f"Candidate: {st.session_state.candidate_name}")
     
-    # Progress bar
+    # Progress bar - Calculate progress ourselves since API no longer provides it
     if st.session_state.total_questions > 0:
-        progress_text = f"Interview Progress: {st.session_state.progress_percentage:.1f}%"
-        st.progress(min(1.0, st.session_state.progress_percentage / 100), text=progress_text)
+        progress_percentage = min(100.0, (st.session_state.question_count / st.session_state.total_questions) * 100.0)
+        progress_text = f"Interview Progress: {progress_percentage:.1f}%"
+        st.progress(min(1.0, progress_percentage / 100), text=progress_text)
     
     # Control buttons
     col1, col2, col3 = st.columns(3)
@@ -325,7 +335,7 @@ def render_interview_ui():
             st.session_state.interview_active = False
             st.session_state.question_count = 0
             st.session_state.total_questions = 0
-            st.session_state.progress_percentage = 0
+            st.session_state.candidate_name = ""
             st.rerun()
     
     # Render chat history
@@ -352,7 +362,15 @@ def render_admin_tools():
         # Session stats in sidebar
         st.sidebar.markdown("### Session Statistics")
         st.sidebar.info(f"Questions Asked: {st.session_state.question_count}/{st.session_state.total_questions}")
-        st.sidebar.info(f"Progress: {st.session_state.progress_percentage:.1f}%")
+        
+        # Calculate progress percentage manually
+        if st.session_state.total_questions > 0:
+            progress_percentage = min(100.0, (st.session_state.question_count / st.session_state.total_questions) * 100.0)
+            st.sidebar.info(f"Progress: {progress_percentage:.1f}%")
+        
+        # Candidate info
+        if st.session_state.candidate_name:
+            st.sidebar.info(f"Interviewing: {st.session_state.candidate_name}")
         
         # Security info
         security_info = get_security_info(st.session_state.session_id)
@@ -413,6 +431,7 @@ def main():
         for job candidates, asking questions and following up based on their responses.
         
         **Features:**
+        - Enter candidate name upfront - AI will greet them by name
         - Behavioral questions are asked first, followed by technical questions
         - The AI uses cross-questioning to probe deeper into candidate answers
         - The interview ends with a natural, professional conclusion
@@ -420,8 +439,9 @@ def main():
         
         **Usage:**
         1. Set up an interview with your preferred settings
-        2. Start the interview and answer questions as a candidate would
-        3. Admin tools are available in the sidebar for testing and monitoring
+        2. Enter the candidate's name to personalize the interview
+        3. Start the interview and answer questions as a candidate would
+        4. Admin tools are available in the sidebar for testing and monitoring
         """)
     
     # Render appropriate UI based on state

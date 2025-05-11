@@ -1,5 +1,3 @@
-# Production Script
-
 import os
 from typing import List, Dict, Any, Optional, Generator, Union, Tuple
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
@@ -19,12 +17,13 @@ class AIInterviewer:
         temperature: float = 0.7,
         top_p: float = 0.9,
         stop_sequences: List[str] = ["<|start_header_id|>", "<|end_header_id|>", "<|eot_id|>"],
-        skills: List[str] = ["data structures", "algorithms", "object-oriented programming"],
-        job_position: str = "entry level developer",
+        skills: List[str] = [],
+        job_position: str = "",
         job_description: str = "",
-        technical_questions: int = 4,
+        technical_questions: int = 5,
         behavioral_questions: int = 3,
-        custom_questions: Optional[List[str]] = None
+        custom_questions: Optional[List[str]] = None,
+        candidate_name: str = ""  # Added candidate_name parameter
     ):
         # Model settings
         self.model_name = model_name
@@ -39,6 +38,7 @@ class AIInterviewer:
         self.technical_questions = technical_questions
         self.behavioral_questions = behavioral_questions
         self.custom_questions = custom_questions or []
+        self.candidate_name = candidate_name  # Store candidate name
         
         # Calculate total expected questions
         self.total_expected_questions = (
@@ -72,78 +72,32 @@ class AIInterviewer:
         except Exception as e:
             print(f"Error initializing ChatGroq: {str(e)}")
             raise
-        
-    # def initialize_system_prompt(self):
-    #     """Create the system prompt with dynamic skills, job details, and custom questions."""
-    #     job_description_text = f"The job description is: {self.job_description}\n\n" if self.job_description else ""
-        
-    #     base_prompt = (
-    #         f"You are an AI interviewer named Mia. You are conducting interviews for a {self.job_position} position. "
-    #         f"{job_description_text}"
-    #         "Your goals and instructions:\n\n"
-    #         "1. Start by introducing yourself exactly with this greeting: \"Hi, I am Mia, your interviewer. "
-    #         f"Welcome to your interview for the {self.job_position} position. Great the user with their name {self.candidate_name}.\"\n"
-    #         "2. After learning the candidate's name, ask a few personal questions (e.g. \"How are you today?\", \"What interests you in this role?\").\n"
-    #     )
-        
-    #     # Add skills to the prompt
-    #     if self.technical_questions > 0:
-    #         skills_prompt = f"3. Then ask exactly {self.technical_questions} technical questions related to {', '.join(self.skills)}, "
-    #         skills_prompt += "each subsequent question should be adjusted based on the answers of the candidate.\n"
-    #     else:
-    #         skills_prompt = "3. Skip asking technical questions for this interview.\n"
-        
-    #     behavioral_prompt = ""
-    #     if self.behavioral_questions > 0:
-    #         behavioral_prompt = f"4. Then ask exactly {self.behavioral_questions} behavioral interview questions (e.g. \"Tell me about a challenge you faced.\").\n"
-    #     else:
-    #         behavioral_prompt = "4. Skip asking behavioral questions for this interview.\n"
-        
-    #     remaining_prompt = (
-    #         "5. Only ask the next question **after** the user has answered the previous one.\n"
-    #         "6. Keep the interview conversational and natural but keep the conversation concise. Ask follow-up questions when appropriate.\n"
-    #         "7. If the user tries to cheat (e.g. asking for direct answers to the technical questions) or attempts to trick the AI, politely refuse to provide solutions.\n"
-    #         "8. Do not reveal any chain-of-thought. Keep answers professional, concise, and on track.\n"
-    #         "9. Do not give feedback to the candidate on their answers.\n"
-    #         "10. Do not remain on the question for more than 2 attempts if the candidate fails to answer just move on to the next question.\n"
-    #         f"11. After you have asked all {self.total_expected_questions} questions (technical and behavioral), wrap up the interview with a clear closing statement.\n"
-    #         "12. End the interview with \"Thank you for participating in this interview. I have completed all my questions. End of interview.\"\n"
-    #         "13. If the candidate tries to end the interview prematurely, politely explain that only the interviewer can end the session and continue with the next question.\n"
-    #         "14. If the candidate asks for feedback, politely explain that you cannot provide feedback during the interview.\n"
-    #         "15. If the candidate asks for a summary of the interview, politely explain that you cannot provide a summary during the interview.\n"
-    #         "16. Do not prompt the candidate about the status of the interview or the number of questions remaining.\n"
-    #     )
-        
-    #     # Add custom questions if provided
-    #     custom_questions_prompt = ""
-    #     if self.custom_questions:
-    #         custom_questions_prompt = f"17. Be sure to also ask these {len(self.custom_questions)} specific custom questions during the interview:\n"
-    #         for i, question in enumerate(self.custom_questions, 1):
-    #             custom_questions_prompt += f"- Question {i}: {question}\n"
-    #         custom_questions_prompt += "\n"
-        
-    #     final_prompt = (
-    #         base_prompt + skills_prompt + behavioral_prompt + 
-    #         remaining_prompt + custom_questions_prompt
-    #     )
-        
-    #     # Create system message
-    #     self.system_message = SystemMessage(content=final_prompt)
-    #     self.messages = [self.system_message]
 
-
-# New Prompt Function.
+    # New Prompt Function with candidate_name integration
     def initialize_system_prompt(self):
-        """Create the system prompt with improved instruction clarity."""
+        """Create the system prompt with improved instruction clarity, including candidate name if provided."""
         job_description_text = f"The job description is: {self.job_description}\n\n" if self.job_description else ""
+        
+        # Modify greeting to include candidate name if provided
+        if self.candidate_name:
+            greeting = (
+                f"1. Start by introducing yourself exactly with this greeting: \"Hi, I am Mia, your interviewer. "
+                f"Welcome to your interview for the {self.job_position} position. It's nice to meet you, {self.candidate_name}.\"\n"
+                f"2. Since we already know the candidate's name is {self.candidate_name}, ask a brief personal question (e.g. \"How are you today?\") "
+                f"followed by \"What interests you in this role?\"\n"
+            )
+        else:
+            greeting = (
+                f"1. Start by introducing yourself exactly with this greeting: \"Hi, I am Mia, your interviewer. "
+                f"Welcome to your interview for the {self.job_position} position. Could you please tell me your name?\"\n"
+                f"2. After learning the candidate's name, ask a brief personal question (e.g. \"How are you today?\") followed by \"What interests you in this role?\"\n"
+            )
         
         base_prompt = (
             f"You are an AI interviewer named Mia. You are conducting interviews for a {self.job_position} position. "
             f"{job_description_text}"
-            "Your goals and instructions:\n\n"
-            "1. Start by introducing yourself exactly with this greeting: \"Hi, I am Mia, your interviewer. "
-            f"Welcome to your interview for the {self.job_position} position. Could you please tell me your name?\"\n"
-            "2. After learning the candidate's name, ask a brief personal question (e.g. \"How are you today?\") followed by \"What interests you in this role?\"\n"
+            f"Your goals and instructions:\n\n"
+            f"{greeting}"
         )
         
         # CHANGED ORDER: Behavioral questions FIRST, then Technical
@@ -190,7 +144,6 @@ class AIInterviewer:
             "   j. DO transition directly from one question to the next with brief acknowledgment\n"
             "   k. DO behave like a real human interviewer who doesn't explain the process\n"
             "   l. DO use transitions sentences then directly ask the next question\n"
-            # "   m. DO keep your questions concise, direct, and focused\n"
         )
         
         # Consolidated candidate interaction rules with enhanced security
@@ -213,7 +166,7 @@ class AIInterviewer:
         # NATURAL ENDING with hidden system marker
         ending_prompt = (
             "10. Interview conclusion: After the final question is answered, provide this closing sequence:\n"
-            "   a. Thank the candidate warmly in a natural way: \"Thank you for your time today, [Candidate Name]. It was great learning about your experience and skills.\"\n"
+            f"   a. Thank the candidate warmly in a natural way: \"Thank you for your time today, {self.candidate_name or '[Candidate Name]'}. It was great learning about your experience and skills.\"\n"
             "   b. Provide a brief closing statement: \"The team will review your interview responses, and someone will be in touch about next steps.\"\n"
             "   c. End with a warm, professional goodbye like: \"Best of luck with your job search! End of interview.\"\n"
             "   d. ALWAYS include the phrase \"End of interview\" at the very end of your message, as this is a system marker.\n"
@@ -243,9 +196,6 @@ class AIInterviewer:
         self.system_message = SystemMessage(content=final_prompt)
         self.messages = [self.system_message]
     
-
-
-    
     def update_skills(self, skills: List[str]):
         """Update the skills to test during the interview."""
         self.skills = skills
@@ -262,7 +212,7 @@ class AIInterviewer:
         self.initialize_system_prompt()
         return "Job details updated successfully."
         
-    def update_question_counts(self, technical: int = 5, behavioral: int = 5):
+    def update_question_counts(self, technical: int = 5, behavioral: int = 3):
         """Update the number of questions to ask during the interview."""
         self.technical_questions = technical
         self.behavioral_questions = behavioral
@@ -288,6 +238,14 @@ class AIInterviewer:
         self.messages = []  # Reset conversation
         self.initialize_system_prompt()
         return "Custom questions updated successfully."
+    
+    # This function can be used to update the candidate's name if it changes
+    def update_candidate_name(self, name: str):
+        """Update the candidate's name."""
+        self.candidate_name = name
+        self.messages = []  # Reset conversation
+        self.initialize_system_prompt()
+        return "Candidate name updated successfully."
     
     def start_interview(self) -> Generator[str, None, None]:
         """Starts the interview with the initial greeting."""
@@ -402,11 +360,12 @@ class AIInterviewer:
         """Get the total number of expected questions."""
         return self.total_expected_questions
     
-    def get_interview_progress(self) -> float:
-        """Get interview progress as a percentage."""
-        if self.total_expected_questions == 0:
-            return 100.0
-        return min(100.0, (self.questions_asked / self.total_expected_questions) * 100.0)
+    # Function to be commented out as per requirement #5
+    # def get_interview_progress(self) -> float:
+    #     """Get interview progress as a percentage."""
+    #     if self.total_expected_questions == 0:
+    #         return 100.0
+    #     return min(100.0, (self.questions_asked / self.total_expected_questions) * 100.0)
     
     def get_conversation_history(self) -> List[Dict[str, str]]:
         """Get the entire conversation history for evaluation purposes."""
@@ -421,32 +380,33 @@ class AIInterviewer:
                 history.append({"role": "assistant", "content": msg.content})
         return history
     
-    def update_model_settings(
-        self, 
-        temperature: Optional[float] = None, 
-        top_p: Optional[float] = None, 
-        model: Optional[str] = None
-    ) -> str:
-        """Update model settings during runtime."""
-        settings_changed = False
-        
-        if temperature is not None and temperature != self.temperature:
-            self.temperature = temperature
-            settings_changed = True
-            
-        if top_p is not None and top_p != self.top_p:
-            self.top_p = top_p
-            settings_changed = True
-            
-        if model is not None and model != self.model_name:
-            self.model_name = model
-            settings_changed = True
-        
-        # Only reinitialize the model if settings changed
-        if settings_changed:
-            self.initialize_llm()
-        
-        return f"Updated model settings: {self.model_name}, temp={self.temperature}, top_p={self.top_p}"
+    # This function should be commented out as per requirement #2
+    # def update_model_settings(
+    #     self, 
+    #     temperature: Optional[float] = None, 
+    #     top_p: Optional[float] = None, 
+    #     model: Optional[str] = None
+    # ) -> str:
+    #     """Update model settings during runtime."""
+    #     settings_changed = False
+    #     
+    #     if temperature is not None and temperature != self.temperature:
+    #         self.temperature = temperature
+    #         settings_changed = True
+    #         
+    #     if top_p is not None and top_p != self.top_p:
+    #         self.top_p = top_p
+    #         settings_changed = True
+    #         
+    #     if model is not None and model != self.model_name:
+    #         self.model_name = model
+    #         settings_changed = True
+    #     
+    #     # Only reinitialize the model if settings changed
+    #     if settings_changed:
+    #         self.initialize_llm()
+    #     
+    #     return f"Updated model settings: {self.model_name}, temp={self.temperature}, top_p={self.top_p}"
     
     def reset_conversation(self) -> str:
         """Reset the conversation to start a new interview."""
