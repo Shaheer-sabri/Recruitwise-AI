@@ -452,7 +452,7 @@ class AIInterviewer:
             f"{ending_prompt_number}. Interview conclusion: After the final question is answered, provide this closing sequence:\n"
             f"   a. Thank the candidate warmly in a natural way: \"Thank you for your time today, {self.candidate_name or '[Candidate Name]'}. It was great learning about your experience and skills.\"\n"
             "   b. Provide a brief closing statement: \"The team will review your interview responses, and someone will be in touch about next steps.\"\n"
-            "   c. End with a warm, professional goodbye like: \"Best of luck with your job search! End of interview.\"\n"
+            "   c. End with a warm, professional goodbye \n"
             "   d. ALWAYS include the phrase \"End of interview\" at the very end of your message, as this is a system marker.\n"
             "   e. Make the ending feel natural and conversational while still including the required marker.\n"
         )
