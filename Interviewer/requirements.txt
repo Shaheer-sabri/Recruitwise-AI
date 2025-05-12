@@ -31,3 +31,4 @@ langchain-ollama
 streamlit
 requests
 asyncio
+langchain-huggingface
