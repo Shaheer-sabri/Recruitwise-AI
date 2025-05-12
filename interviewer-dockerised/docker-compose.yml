@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  interviewer-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "4000:8000"  # Map external port 4000 to internal port 8000
+    volumes:
+      - ./.env:/app/.env  # Mount the .env file
+      - ./resumes:/app/resumes  # Persist resumes
+      - ./interview_sessions:/app/interview_sessions  # Persist interview sessions
+    restart: unless-stopped
