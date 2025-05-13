@@ -20,19 +20,35 @@
 # uvicorn
 # python-multipart
 #langchain-embeddings
-#                   updated file from here
-fastapi
-uvicorn
-pydantic
-python-dotenv
-langchain
-langchain-core
-langchain-groq
-langchain-huggingface
-pdfplumber
-chromadb
-sentence-transformers
-boto3
-python-multipart
-requests
-python-dateutil
+#updated file from here
+# Core dependencies
+# Web framework
+fastapi>=0.103.0
+uvicorn>=0.23.0
+pydantic>=2.3.0
+
+# PDF processing
+pdfplumber>=0.10.0
+
+# LangChain dependencies
+langchain>=0.0.312
+langchain-groq>=0.0.1
+langchain-core>=0.1.7
+langchain-huggingface>=0.0.1
+langchain-text-splitters>=0.0.1
+
+# Vector storage
+chromadb>=0.4.15
+
+# Embeddings model
+sentence-transformers>=2.2.2
+
+# Cloud storage
+boto3>=1.28.38
+requests>=2.31.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# CORS support
+starlette>=0.27.0

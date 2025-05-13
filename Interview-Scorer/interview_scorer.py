@@ -12,7 +12,11 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 
 
-
+# Interview scorer that takes 3 inputs
+#   1- JD
+#   2- Interview Transcript (JSON)
+#   3- Skills Array
+# Uses LLM to score the transcript against the JD giving the output in JSON format
 class InterviewScorer:
     """
     A class that evaluates interview transcripts and provides scoring based on skills

@@ -1,14 +1,28 @@
 version: '3.8'
 
 services:
-  interviewer-api:
+  ai-interviewer:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: ai-interviewer
     ports:
-      - "4000:8000"  # Map external port 4000 to internal port 8000
+      - "8000:8000"
     volumes:
-      - ./.env:/app/.env  # Mount the .env file
-      - ./resumes:/app/resumes  # Persist resumes
-      - ./interview_sessions:/app/interview_sessions  # Persist interview sessions
+      - ./resumes:/app/resumes
+      - ./interview_sessions:/app/interview_sessions
+    env_file:
+      - .env
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/sessions"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Limit resources to prevent memory issues
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
