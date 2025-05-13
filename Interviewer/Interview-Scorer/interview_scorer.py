@@ -10,6 +10,9 @@ import time
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
+
+
+
 class InterviewScorer:
     """
     A class that evaluates interview transcripts and provides scoring based on skills
@@ -30,7 +33,17 @@ class InterviewScorer:
         else:
             self.llm = None
             print("Warning: GROQ_API_KEY not found. Running in mock mode.")
+
+
+
     
+
+
+    #Taking 3 inputs:
+    # 1- JD
+    # 2- Interview Transcript
+    # 3- Skills array
+
     def evaluate_interview(self, 
                           job_description: str, 
                           interview_transcript: Dict[str, Any], 
@@ -48,8 +61,12 @@ class InterviewScorer:
         """
         # Get the interview history
         history = interview_transcript.get("history", [])
+
+
+
         
         # Validate that there's actual interview content to evaluate
+        # If transcript is empty or incomplete then score is 0
         if not history:
             return {
                 "error": "Empty transcript",
@@ -80,7 +97,10 @@ class InterviewScorer:
                 "evaluation_summary": f"The transcript only contains {len(candidate_responses)} candidate responses, which is insufficient for a meaningful evaluation. A complete interview is needed."
             }
         
-        # If we don't have an LLM (no API key), generate mock results
+
+
+
+        # If we don't have an API key, generate mock results
         if not self.llm:
             return self._generate_mock_evaluation(skills)
             
@@ -115,6 +135,11 @@ class InterviewScorer:
                 "evaluation_summary": f"Failed to generate evaluation: {str(e)}"
             }
     
+
+
+
+    # Convert from JSON to readable transcript
+
     def _format_transcript(self, history: List[Dict[str, str]]) -> str:
         """Format the interview history into a readable transcript"""
         formatted = ""
@@ -130,6 +155,12 @@ class InterviewScorer:
         
         return formatted
     
+
+
+    
+    # Core logic of the scorer. logic being a detailed prompt given to the scorer. 
+    # Output is in JSON format created by LLM
+
     def _create_evaluation_prompt(self, 
                                  job_description: str, 
                                  formatted_transcript: str, 
@@ -218,6 +249,11 @@ IMPORTANT: Make sure your response can be parsed as valid JSON. Do not include m
 """
         return prompt
     
+
+
+
+    # Extract scores from the LLMs Response
+
     def _parse_scoring_response(self, response_text: str, skills: List[str]) -> Dict[str, Any]:
         """Parse the LLM response to extract structured scoring data"""
         try:
@@ -268,7 +304,13 @@ IMPORTANT: Make sure your response can be parsed as valid JSON. Do not include m
                 "skill_justifications": {skill: "Failed to parse response" for skill in skills},
                 "evaluation_summary": "The model did not return a valid JSON response."
             }
-    
+        
+
+
+
+
+
+    #IGNORE THIS
     def _generate_mock_evaluation(self, skills: List[str]) -> Dict[str, Any]:
         """Generate mock evaluation when API key is missing"""
         import random
@@ -300,22 +342,3 @@ IMPORTANT: Make sure your response can be parsed as valid JSON. Do not include m
             "evaluation_summary": summary,
             "note": "MOCK EVALUATION - No API key provided"
         }
-
-# Example usage if running standalone
-if __name__ == "__main__":
-    # Sample data for testing
-    sample_skills = ["Python", "RESTful API", "Database Knowledge"]
-    sample_jd = "Entry Level Software Engineer position requiring Python programming and API development"
-    sample_transcript = {
-        "history": [
-            {"role": "user", "content": "My name is John"},
-            {"role": "assistant", "content": "Hi John, tell me about your Python experience"},
-            {"role": "user", "content": "I've used Python for 2 years"}
-        ]
-    }
-    
-    # Test the scorer
-    scorer = InterviewScorer()
-    result = scorer.evaluate_interview(sample_jd, sample_transcript, sample_skills)
-    
-    print(json.dumps(result, indent=2))
