@@ -2,15 +2,13 @@ import os
 import json
 import streamlit as st
 import pandas as pd
+import requests
 from typing import List, Dict, Any
 import time
 
-# Import our InterviewScorer class
-from interview_scorer import InterviewScorer
-
 # Set page configuration
 st.set_page_config(
-    page_title="Interview Scorer Dashboard",
+    page_title="Interview Scorer API Dashboard",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -52,10 +50,6 @@ Communication Skills"""
     # Sample transcript (simplified version of the one provided)
     sample_transcript = {
       "session_id": "9e1e2a64-1740-494d-afd7-c309af7792ea",
-      "model_name": "llama-3.3-70b-versatile",
-      "active": False,
-      "questions_asked": 7,
-      "total_expected_questions": 6,
       "history": [
         {
           "role": "user",
@@ -76,52 +70,156 @@ Communication Skills"""
         {
           "role": "user",
           "content": "I'm doing well, thank you for asking—excited to be here and have the opportunity to speak with you today. What really interests me about this Entry Level Software Engineer role is the chance to apply the skills I've built through my academic background and personal projects in a professional setting where I can continue learning and growing. I'm drawn to this position because it offers a balance between technical challenges and real-world impact, and I see it as a great opportunity to build a strong foundation in software development. I'm particularly excited about contributing to collaborative projects, learning from experienced engineers, and gradually taking on more complex responsibilities. My goal is to become a reliable team member who not only writes clean, efficient code but also contributes to the overall success of the team and the company."
-        },
-        {
-          "role": "assistant",
-          "content": "It sounds like you're eager to apply your skills and knowledge in a real-world setting and continue to grow as a software engineer. That's great to hear. \n\nBefore we dive into the technical aspects, I'd like to ask: What do you know about Khizar's Software House?"
-        },
-        {
-          "role": "user",
-          "content": "Yes, absolutely—I'm really looking forward to contributing in a meaningful way while continuing to develop as a software engineer.\n\nAs for Khizar's Software House, from what I've researched, it appears to be a growing tech company that focuses on delivering high-quality software solutions tailored to client needs. I understand that you work on a diverse range of projects, which could include web and mobile development, custom software, and perhaps even emerging technologies. What really stood out to me is the emphasis on innovation and a client-centric approach—both of which align well with my own mindset as a developer. I also get the sense that the company values collaboration and continuous improvement, which is the kind of environment where I see myself thriving and making a long-term impact."
-        },
-        {
-          "role": "assistant",
-          "content": "That's a good understanding of Khizar's Software House. It's great that you've done your research and can see how our values and approach align with your own goals and mindset.\n\nLet's move on to some technical questions. Here's the first one: Can you explain the difference between a list and a tuple in Python, and when would you use each?"
-        },
-        {
-          "role": "user",
-          "content": "Sure! In Python, both lists and tuples are used to store collections of items, but there are some key differences between them. The main difference is that lists are **mutable**, meaning you can change, add, or remove elements after the list has been created. Tuples, on the other hand, are **immutable**, so once they're created, their contents can't be modified.\n\nI would use a **list** when I need a collection of items that might change during the execution of the program—for example, if I'm dynamically adding user inputs or processing items that get updated. A **tuple** is more suitable when I want to ensure that the data remains constant, such as storing fixed pairs of values like coordinates, or returning multiple values from a function where the structure shouldn't be accidentally altered.\n\nThe immutability of tuples can also make them slightly faster and safer to use in some cases, especially when used as dictionary keys or in situations where data integrity is important."
         }
       ]
     }
     
     return sample_jd, sample_skills, json.dumps(sample_transcript, indent=2)
 
-def display_header():
-    """Display the dashboard header and instructions"""
-    st.title("🎯 Interview Scorer Dashboard")
+def fix_transcript_format(transcript_text_or_json: Any) -> Dict[str, Any]:
+    """Fix common issues with transcript format"""
+    # If it's already a dict, make a copy to avoid modifying the original
+    if isinstance(transcript_text_or_json, dict):
+        fixed = transcript_text_or_json.copy()
+    else:
+        # Try to parse as JSON if it's a string
+        try:
+            # Check if the string starts with a quote and not a brace
+            # This handles cases where the JSON is missing the opening brace
+            if isinstance(transcript_text_or_json, str):
+                text = transcript_text_or_json.strip()
+                if text and text[0] == '"' and not text.startswith('{'):
+                    # Add the missing opening brace
+                    text = '{' + text
+                    # Check if it needs a closing brace
+                    if not text.rstrip().endswith('}'):
+                        text = text + '}'
+                    
+                    st.info("Fixed JSON format by adding missing braces")
+                
+                fixed = json.loads(text)
+            else:
+                return {"history": []}
+                
+        except json.JSONDecodeError as e:
+            st.error(f"Unable to parse transcript JSON: {e}")
+            st.code(transcript_text_or_json[:100] + "..." if len(str(transcript_text_or_json)) > 100 else transcript_text_or_json)
+            return {"history": []}
     
-    with st.expander("ℹ️ About this tool", expanded=False):
-        st.markdown("""
-        This tool evaluates technical interview performance based on the job description, required skills, and interview transcript.
-        
-        ### How it works:
-        1. Enter the job description for the position
-        2. List the skills to evaluate (one per line)
-        3. Paste the interview transcript in JSON format
-        4. Click "Evaluate Interview" to get scores and feedback
-        
-        The scorer uses a large language model to analyze the interview and provide:
-        - An overall candidate score (1-10)
-        - Individual scores for each skill (1-10)
-        - Justifications for each skill score
-        - A summary evaluation with strengths and areas for improvement
-        """)
+    # If the transcript has session_id but no separate history field,
+    # make sure we have a proper history entry
+    if "session_id" in fixed and "history" in fixed:
+        return fixed
+    
+    # If the transcript is nested inside an 'interview_transcript' field
+    if "interview_transcript" in fixed and isinstance(fixed["interview_transcript"], dict):
+        fixed = fixed["interview_transcript"]
+    
+    # If we still don't have a history field, but have a list at the top level
+    if "history" not in fixed and isinstance(fixed, list):
+        fixed = {"history": fixed}
+    
+    return fixed
 
 def parse_skills(skills_input: str) -> List[str]:
     """Parse skills from a text input"""
     return [skill.strip() for skill in skills_input.split('\n') if skill.strip()]
+
+def call_api_with_separate_inputs(api_url: str, job_description: str, skills: List[str], transcript_json: str):
+    """Call the Interview Scorer API with separate inputs"""
+    try:
+        # Try to parse or fix the transcript
+        try:
+            # First, check if this is raw JSON or already parsed
+            if isinstance(transcript_json, dict):
+                transcript = transcript_json
+            else:
+                # Try to parse as JSON
+                # Handle missing brackets by adding them if needed
+                text = transcript_json.strip()
+                if text and text[0] == '"' and not text.startswith('{'):
+                    # Add missing opening brace
+                    text = '{' + text
+                    # Check if closing brace is needed
+                    if not text.rstrip().endswith('}'):
+                        text = text + '}'
+                    st.info("Added missing braces to JSON")
+                
+                transcript = json.loads(text)
+        except json.JSONDecodeError as e:
+            st.error(f"Invalid JSON format: {e}")
+            st.code(transcript_json[:200] + "..." if len(transcript_json) > 200 else transcript_json, language="json")
+            return {"error": f"Invalid JSON format: {e}"}
+        
+        # Fix transcript format if needed
+        fixed_transcript = fix_transcript_format(transcript)
+        
+        # Prepare the data - sending as separate fields in the request
+        data = {
+            "job_description": job_description,
+            "skills": skills,
+            "interview_transcript": fixed_transcript
+        }
+        
+        # Log the data structure before sending
+        st.session_state.last_request_data = data
+        
+        # Call the API
+        with st.spinner("⏳ Calling API to evaluate interview... This may take a minute..."):
+            start_time = time.time()
+            response = requests.post(f"{api_url}/score", json=data, timeout=120)
+            end_time = time.time()
+            
+        # Check response
+        if response.status_code == 200:
+            result = response.json()
+            # Add processing time
+            result["processing_time_seconds"] = round(end_time - start_time, 2)
+            return result
+        else:
+            st.error(f"API Error (Status {response.status_code})")
+            st.code(response.text)
+            return {
+                "error": f"API returned status code {response.status_code}",
+                "response": response.text
+            }
+    except json.JSONDecodeError:
+        st.error("❌ Invalid JSON format in the transcript. Please check and try again.")
+        return {"error": "Invalid JSON format in transcript"}
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ API Request Error: {str(e)}")
+        return {"error": f"API Request Error: {str(e)}"}
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        return {"error": str(e)}
+
+def fix_common_json_errors(json_str: str) -> str:
+    """Attempt to fix common JSON format errors"""
+    # Try to fix issues with missing braces
+    text = json_str.strip()
+    
+    # Check if it starts with a quote or field name
+    if text and (text[0] == '"' or text.startswith("session_id")):
+        # If it doesn't start with opening brace
+        if not text.startswith('{'):
+            text = '{' + text
+        
+        # If it doesn't end with closing brace
+        if not text.rstrip().endswith('}'):
+            text = text + '}'
+    
+    # Check if we need to add quotes around field names
+    for field in ["session_id", "model_name", "active", "questions_asked", "history"]:
+        # Replace field: with "field":
+        text = text.replace(f'{field}:', f'"{field}":')
+    
+    # Try parsing to verify it's fixed
+    try:
+        json.loads(text)
+        return text
+    except json.JSONDecodeError:
+        # If still not valid, return original
+        return None
 
 def display_input_section():
     """Display the input section of the dashboard"""
@@ -162,6 +260,50 @@ def display_input_section():
             height=400,
             value=st.session_state.get('transcript_json', '')
         )
+        
+        # Auto-fix JSON option
+        auto_fix_json = st.checkbox("Auto-fix JSON format issues", value=True, 
+                                  help="Attempt to automatically fix common JSON format issues")
+        
+        # Preview of transcript if it's valid JSON
+        if transcript_json:
+            try:
+                # Try to fix if needed
+                text = transcript_json.strip()
+                if auto_fix_json and text and text[0] == '"' and not text.startswith('{'):
+                    # Add missing opening brace
+                    text = '{' + text
+                    # Check if closing brace is needed
+                    if not text.rstrip().endswith('}'):
+                        text = text + '}'
+                    st.success("✅ Added missing braces to JSON")
+                    transcript_data = json.loads(text)
+                    # Update the transcript in session state
+                    st.session_state.transcript_json = text
+                else:
+                    transcript_data = json.loads(transcript_json)
+                
+                # Check for history array
+                if "history" in transcript_data:
+                    num_exchanges = len(transcript_data["history"])
+                    st.success(f"✅ Valid transcript with {num_exchanges} message exchanges")
+                elif "session_id" in transcript_data and "history" in transcript_data:
+                    num_exchanges = len(transcript_data["history"])
+                    st.success(f"✅ Valid transcript with {num_exchanges} message exchanges")
+                else:
+                    st.warning("⚠️ Transcript JSON doesn't contain a 'history' array. The system will attempt to fix this.")
+            except json.JSONDecodeError as e:
+                st.error(f"❌ Invalid JSON format: {str(e)}")
+                if auto_fix_json:
+                    # Try some common fixes
+                    try:
+                        fixed = fix_common_json_errors(transcript_json)
+                        if fixed:
+                            st.success("✅ Fixed JSON format issues")
+                            # Update the transcript in session state
+                            st.session_state.transcript_json = fixed
+                    except:
+                        st.warning("Unable to automatically fix JSON format")
     
     # Action buttons
     col1, col2 = st.columns(2)
@@ -178,15 +320,16 @@ def display_results(result: Dict[str, Any]):
     """Display the evaluation results"""
     st.header("📊 Evaluation Results")
     
-    # Check for validation errors
-    if "error" in result and result["error"] in ["Empty transcript", "No candidate responses", "Insufficient interview content"]:
-        st.error(f"⚠️ Validation Error: {result['evaluation_summary']}")
-        st.warning("Please provide a complete interview transcript with sufficient candidate responses.")
-        return
-    
-    # Check for other errors
+    # Check for errors
     if "error" in result:
         st.error(f"⚠️ Error: {result['error']}")
+        if "response" in result:
+            st.code(result["response"])
+        
+        # Show debugging information
+        if hasattr(st.session_state, 'last_request_data'):
+            with st.expander("🔍 Debug: Last Request Data"):
+                st.json(st.session_state.last_request_data)
         return
     
     col1, col2 = st.columns([1, 2])
@@ -268,10 +411,6 @@ def display_results(result: Dict[str, Any]):
     processing_time = result.get('processing_time_seconds', 0)
     st.caption(f"Processing time: {processing_time:.2f} seconds")
     
-    # Check if this is mock data
-    if 'note' in result and 'MOCK' in result['note']:
-        st.warning("⚠️ This is mock evaluation data. Please set up your GROQ_API_KEY for real evaluations.")
-    
     # Offer to save results
     if st.button("💾 Save Results to File"):
         # Add timestamp
@@ -300,34 +439,13 @@ def save_results_to_file(result: Dict[str, Any]):
     except Exception as e:
         st.error(f"❌ Error saving results: {str(e)}")
 
-def evaluate_interview(job_description: str, skills: List[str], transcript_json: str):
-    """Evaluate the interview using the InterviewScorer"""
+def check_api_health(api_url: str) -> bool:
+    """Check if the API is healthy"""
     try:
-        # Parse transcript JSON
-        transcript = json.loads(transcript_json)
-        
-        # Create scorer and evaluate
-        with st.spinner("⏳ Evaluating interview... This may take a minute..."):
-            scorer = InterviewScorer()
-            start_time = time.time()
-            result = scorer.evaluate_interview(job_description, transcript, skills)
-            end_time = time.time()
-            
-            # Add processing time if not already included
-            if "processing_time_seconds" not in result:
-                result["processing_time_seconds"] = round(end_time - start_time, 2)
-        
-        # Check for validation errors
-        if "error" in result and result["error"] in ["Empty transcript", "No candidate responses", "Insufficient interview content"]:
-            st.error(f"⚠️ Validation Error: {result['evaluation_summary']}")
-            
-        return result
-    except json.JSONDecodeError:
-        st.error("❌ Invalid JSON format in the transcript. Please check and try again.")
-        return {"error": "Invalid JSON format"}
-    except Exception as e:
-        st.error(f"❌ Error evaluating interview: {str(e)}")
-        return {"error": str(e)}
+        response = requests.get(f"{api_url}/health", timeout=5)
+        return response.status_code == 200
+    except:
+        return False
 
 def main():
     """Main function for the Streamlit dashboard"""
@@ -336,23 +454,37 @@ def main():
         st.session_state.evaluation_result = None
     
     # Display header
-    display_header()
+    st.title("🎯 Interview Scorer API Dashboard")
+    st.markdown("""
+    This dashboard connects to the Interview Scorer API which takes separate inputs for:
+    1. Job Description
+    2. Skills Array 
+    3. Interview Transcript
+    """)
     
     # Display sidebar
     with st.sidebar:
-        st.header("🛠️ Settings")
-        model_name = st.selectbox(
-            "Model",
-            ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma-7b-it"],
-            index=0
-        )
+        st.header("🛠️ API Settings")
         
-        st.caption("Note: Model selection will be implemented in a future update")
+        # API URL configuration
+        api_url = st.text_input(
+            "API URL", 
+            value=st.session_state.get('api_url', 'http://localhost:8000'),
+            help="Enter the URL of the Interview Scorer API"
+        )
+        st.session_state.api_url = api_url
+        
+        # Check API health
+        if st.button("Test API Connection"):
+            if check_api_health(api_url):
+                st.success("✅ API is available and healthy!")
+            else:
+                st.error("❌ Could not connect to API. Please check the URL and make sure the API is running.")
         
         st.markdown("---")
-        st.subheader("📚 Resources")
-        st.markdown("[GitHub Repository](https://github.com/username/interview-scorer)")
-        st.markdown("[Report an Issue](https://github.com/username/interview-scorer/issues)")
+        st.markdown("### 📚 Resources")
+        st.markdown("- [View API Documentation]()")
+        st.markdown("- [Report an Issue]()")
     
     # Create tabs
     tab1, tab2 = st.tabs(["Input", "Results"])
@@ -367,6 +499,7 @@ def main():
             st.session_state.job_description = sample_jd
             st.session_state.skills_input = sample_skills
             st.session_state.transcript_json = sample_transcript
+            st.success("✅ Sample data loaded!")
             st.rerun()
         
         # Handle evaluate button
@@ -377,14 +510,16 @@ def main():
                 st.error("❌ Please enter at least one skill to evaluate")
             elif not transcript_json.strip():
                 st.error("❌ Please enter the interview transcript")
+            elif not st.session_state.api_url:
+                st.error("❌ Please enter the API URL in the sidebar")
             else:
                 # Save inputs to session state
                 st.session_state.job_description = job_description
                 st.session_state.skills_input = '\n'.join(skills)
                 st.session_state.transcript_json = transcript_json
                 
-                # Evaluate interview
-                result = evaluate_interview(job_description, skills, transcript_json)
+                # Call API to evaluate interview
+                result = call_api_with_separate_inputs(st.session_state.api_url, job_description, skills, transcript_json)
                 
                 # Store result
                 st.session_state.evaluation_result = result
