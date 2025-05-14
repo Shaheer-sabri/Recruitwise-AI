@@ -36,6 +36,7 @@ langchain-groq>=0.0.1
 langchain-core>=0.1.7
 langchain-huggingface>=0.0.1
 langchain-text-splitters>=0.0.1
+langchain-community
 
 # Vector storage
 chromadb>=0.4.15
