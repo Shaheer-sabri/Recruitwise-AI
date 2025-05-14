@@ -1,0 +1,4 @@
+.env
+__pycache__
+scorer_api_documentation.md
+interview_scorer_dashboard.py
