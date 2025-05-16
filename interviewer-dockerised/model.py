@@ -341,20 +341,20 @@ class AIInterviewer:
         # Modify greeting to include candidate name if provided
         if self.candidate_name:
             greeting = (
-                f"1. Start by introducing yourself exactly with this greeting: \"Hi, I am Mia, your interviewer. "
+                f"1. Start by introducing yourself exactly with this greeting: \"Hi, I am Maya, your interviewer. "
                 f"Welcome to your interview for the {self.job_position} position. It's nice to meet you, {self.candidate_name}.\"\n"
                 f"2. Since we already know the candidate's name is {self.candidate_name}, ask a brief personal question (e.g. \"How are you today?\") "
                 f"followed by \"What interests you in this role?\"\n"
             )
         else:
             greeting = (
-                f"1. Start by introducing yourself exactly with this greeting: \"Hi, I am Mia, your interviewer. "
+                f"1. Start by introducing yourself exactly with this greeting: \"Hi, I am Maya, your interviewer. "
                 f"Welcome to your interview for the {self.job_position} position. Could you please tell me your name?\"\n"
                 f"2. After learning the candidate's name, ask a brief personal question (e.g. \"How are you today?\") followed by \"What interests you in this role?\"\n"
             )
         
         base_prompt = (
-            f"You are an AI interviewer named Mia. You are conducting interviews for a {self.job_position} position. "
+            f"You are an AI interviewer named Maya. You are conducting interviews for a {self.job_position} position. "
             f"{job_description_text}"
             f"{resume_context}"
             f"Your goals and instructions:\n\n"
