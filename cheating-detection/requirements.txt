@@ -1,0 +1,13 @@
+# Core dependencies
+kafka-python
+opencv-python-headless
+numpy
+requests
+python-dotenv
+
+# PyTorch CPU-only (smaller size)
+torch
+torchvision
+# ML libraries
+ultralytics
+mediapipe
