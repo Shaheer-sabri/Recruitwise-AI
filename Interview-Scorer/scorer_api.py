@@ -16,16 +16,14 @@ app = FastAPI(
 # Create a single instance of the scorer which will be reuused for all requests instead of creating a new instance for each request
 scorer = InterviewScorer(model_name="llama-3.3-70b-versatile")
 
-
-
 # 3 Parameters that must be provided in the request body:
 #      1- JD
-#      2- Transcript
+#      2- Conversation History (updated parameter name)
 #      3- Skills array
 @app.post("/evaluate")
 async def evaluate_interview(
     job_description: str = Body(...),
-    interview_transcript: Dict[str, Any] = Body(...),
+    conversation_history: List[Dict[str, Any]] = Body(...),  # Changed from interview_transcript
     skills: List[str] = Body(...)
 ):
     """
@@ -37,7 +35,7 @@ async def evaluate_interview(
         # Evaluate the interview using the scorer
         results = scorer.evaluate_interview(
             job_description=job_description,
-            interview_transcript=interview_transcript,
+            conversation_history=conversation_history,  # Updated parameter name
             skills=skills
         )
         
@@ -59,4 +57,3 @@ if __name__ == "__main__":
     
     # Run the server
     uvicorn.run("app:app", host="0.0.0.0", port=port)
-

@@ -1,6 +1,6 @@
 import os
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from dotenv import load_dotenv
@@ -11,12 +11,6 @@ load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 
-
-# Interview scorer that takes 3 inputs
-#   1- JD
-#   2- Interview Transcript (JSON)
-#   3- Skills Array
-# Uses LLM to score the transcript against the JD giving the output in JSON format
 class InterviewScorer:
     """
     A class that evaluates interview transcripts and provides scoring based on skills
@@ -38,78 +32,68 @@ class InterviewScorer:
             self.llm = None
             print("Warning: GROQ_API_KEY not found. Running in mock mode.")
 
-
-
-    
-
-
-    #Taking 3 inputs:
-    # 1- JD
-    # 2- Interview Transcript
-    # 3- Skills array
-
     def evaluate_interview(self, 
                           job_description: str, 
-                          interview_transcript: Dict[str, Any], 
+                          conversation_history: List[Dict[str, Any]], 
                           skills: List[str]) -> Dict[str, Any]:
         """
         Evaluate an interview transcript and return scores
         
         Args:
             job_description: The job description text
-            interview_transcript: A dictionary containing the interview transcript
+            conversation_history: A list of conversation entries with speaker, text, and timestamp
             skills: A list of skills to evaluate
             
         Returns:
-            A dictionary containing overall score and individual skill scores
+            A dictionary containing overall score and individual skill scores in the new format
         """
-        # Get the interview history
-        history = interview_transcript.get("history", [])
-
-
-
         
         # Validate that there's actual interview content to evaluate
-        # If transcript is empty or incomplete then score is 0
-        if not history:
+        if not conversation_history:
             return {
                 "error": "Empty transcript",
-                "overall_score": 0,
-                "skill_scores": {skill: 0 for skill in skills},
-                "skill_justifications": {skill: "No interview content to evaluate" for skill in skills},
+                "scores": {
+                    "overallScore": 0,
+                    "skillScores": [{"skill": skill, "score": 0, "remarks": "No interview content to evaluate"} for skill in skills]
+                },
                 "evaluation_summary": "Cannot evaluate an empty interview transcript. Please provide a transcript with actual interview content."
             }
         
-        # Make sure there's at least one candidate response (user message)
-        candidate_responses = [msg for msg in history if msg.get("role") == "user" and msg.get("content") and msg.get("content").strip() != "Let's start the interview."]
+        # Make sure there's at least one candidate response
+        candidate_responses = [
+            msg for msg in conversation_history 
+            if msg.get("speaker") == "candidate" 
+            and msg.get("text") 
+            and msg.get("text").strip() != ""
+        ]
+        
         if not candidate_responses:
             return {
                 "error": "No candidate responses",
-                "overall_score": 0,
-                "skill_scores": {skill: 0 for skill in skills},
-                "skill_justifications": {skill: "No candidate responses to evaluate" for skill in skills},
+                "scores": {
+                    "overallScore": 0,
+                    "skillScores": [{"skill": skill, "score": 0, "remarks": "No candidate responses to evaluate"} for skill in skills]
+                },
                 "evaluation_summary": "The transcript doesn't contain any substantial candidate responses to evaluate."
             }
             
         # Check if we have enough content for meaningful evaluation
-        if len(candidate_responses) < 3:  # Arbitrary threshold, can be adjusted
+        if len(candidate_responses) < 3:
             return {
                 "error": "Insufficient interview content",
-                "overall_score": 0,
-                "skill_scores": {skill: 0 for skill in skills},
-                "skill_justifications": {skill: "Insufficient interview content" for skill in skills},
+                "scores": {
+                    "overallScore": 0,
+                    "skillScores": [{"skill": skill, "score": 0, "remarks": "Insufficient interview content"} for skill in skills]
+                },
                 "evaluation_summary": f"The transcript only contains {len(candidate_responses)} candidate responses, which is insufficient for a meaningful evaluation. A complete interview is needed."
             }
-        
-
-
 
         # If we don't have an API key, generate mock results
         if not self.llm:
             return self._generate_mock_evaluation(skills)
             
         # Format the transcript for easier processing
-        formatted_transcript = self._format_transcript(history)
+        formatted_transcript = self._format_conversation_history(conversation_history)
         
         # Create the prompt for evaluation
         prompt = self._create_evaluation_prompt(job_description, formatted_transcript, skills)
@@ -122,7 +106,7 @@ class InterviewScorer:
             start_time = time.time()
             response = self.llm.invoke(messages)
             processing_time = time.time() - start_time
-            print(f"Processing time: {processing_time:.2f} seconds")  # Only log, don't include in result
+            print(f"Processing time: {processing_time:.2f} seconds")
             
             # Parse the response to extract scores
             result = self._parse_scoring_response(response.content, skills)
@@ -133,37 +117,27 @@ class InterviewScorer:
             print(f"Error during evaluation: {str(e)}")
             return {
                 "error": str(e),
-                "overall_score": 0,
-                "skill_scores": {skill: 0 for skill in skills},
-                "skill_justifications": {skill: "Error occurred" for skill in skills},
+                "scores": {
+                    "overallScore": 0,
+                    "skillScores": [{"skill": skill, "score": 0, "remarks": "Error occurred during evaluation"} for skill in skills]
+                },
                 "evaluation_summary": f"Failed to generate evaluation: {str(e)}"
             }
-    
 
-
-
-    # Convert from JSON to readable transcript
-
-    def _format_transcript(self, history: List[Dict[str, str]]) -> str:
-        """Format the interview history into a readable transcript"""
+    def _format_conversation_history(self, conversation_history: List[Dict[str, Any]]) -> str:
+        """Format the conversation history into a readable transcript"""
         formatted = ""
         
-        for entry in history:
-            role = entry.get("role", "")
-            content = entry.get("content", "")
+        for entry in conversation_history:
+            speaker = entry.get("speaker", "")
+            text = entry.get("text", "")
             
-            if role == "user":
-                formatted += f"Candidate: {content}\n\n"
-            elif role == "assistant":
-                formatted += f"Interviewer: {content}\n\n"
+            if speaker == "candidate":
+                formatted += f"Candidate: {text}\n\n"
+            elif speaker == "ai":
+                formatted += f"Interviewer: {text}\n\n"
         
         return formatted
-    
-
-
-    
-    # Core logic of the scorer. logic being a detailed prompt given to the scorer. 
-    # Output is in JSON format created by LLM
 
     def _create_evaluation_prompt(self, 
                                  job_description: str, 
@@ -235,31 +209,28 @@ For the overall score, the scale means:
 # OUTPUT FORMAT:
 Respond in valid JSON format with the following structure:
 {{
-  "overall_score": <1-10 integer>,
-  "skill_scores": {{
-    "<skill1>": <0-10 integer>,
-    "<skill2>": <0-10 integer>,
-    ...
-  }},
-  "skill_justifications": {{
-    "<skill1>": "<justification text>",
-    "<skill2>": "<justification text>",
-    ...
-  }},
+  "overallScore": <1-10 integer>,
+  "skillScores": [
+    {{
+      "skill": "<skill1>",
+      "score": <0-10 integer>,
+      "remarks": "<justification text>"
+    }},
+    {{
+      "skill": "<skill2>",
+      "score": <0-10 integer>,
+      "remarks": "<justification text>"
+    }}
+  ],
   "evaluation_summary": "<overall evaluation summary text>"
 }}
 
 IMPORTANT: Make sure your response can be parsed as valid JSON. Do not include markdown code blocks or any text outside the JSON structure.
 """
         return prompt
-    
-
-
-
-    # Extract scores from the LLMs Response
 
     def _parse_scoring_response(self, response_text: str, skills: List[str]) -> Dict[str, Any]:
-        """Parse the LLM response to extract structured scoring data"""
+        """Parse the LLM response to extract structured scoring data in the new format"""
         try:
             # Clean up the response text - remove any markdown code block indicators
             cleaned_text = response_text.strip()
@@ -275,23 +246,38 @@ IMPORTANT: Make sure your response can be parsed as valid JSON. Do not include m
             cleaned_text = cleaned_text.strip()
             
             # Try to parse the JSON response
-            result = json.loads(cleaned_text)
+            llm_result = json.loads(cleaned_text)
             
-            # Validate expected keys
-            expected_keys = ["overall_score", "skill_scores", "evaluation_summary"]
-            for key in expected_keys:
-                if key not in result:
-                    raise ValueError(f"Missing required key in response: {key}")
+            # Convert to the new format
+            result = {
+                "scores": {
+                    "overallScore": llm_result.get("overallScore", 0),
+                    "skillScores": []
+                }
+            }
             
-            # Make sure all skills are scored
+            # Add evaluation summary if present
+            if "evaluation_summary" in llm_result:
+                result["evaluation_summary"] = llm_result["evaluation_summary"]
+            
+            # Convert skill scores to the new format
+            skill_scores_data = llm_result.get("skillScores", [])
+            
+            # If skillScores is empty or not in expected format, create from skills list
+            if not skill_scores_data:
+                skill_scores_data = [{"skill": skill, "score": 0, "remarks": "No evaluation provided"} for skill in skills]
+            
+            # Ensure all skills are included
+            existing_skills = {item.get("skill") for item in skill_scores_data if "skill" in item}
             for skill in skills:
-                if skill not in result["skill_scores"]:
-                    # Add a default score if missing
-                    result["skill_scores"][skill] = 0
+                if skill not in existing_skills:
+                    skill_scores_data.append({
+                        "skill": skill,
+                        "score": 0,
+                        "remarks": "This skill was not covered in the interview"
+                    })
             
-            # Ensure skill_justifications exists
-            if "skill_justifications" not in result:
-                result["skill_justifications"] = {skill: "No justification provided" for skill in skills}
+            result["scores"]["skillScores"] = skill_scores_data
             
             return result
             
@@ -300,49 +286,72 @@ IMPORTANT: Make sure your response can be parsed as valid JSON. Do not include m
             print(f"Failed to parse JSON response from model: {str(e)}")
             print(f"Raw response: {response_text}")
             
-            # Return a default error result
+            # Return a default error result in the new format
             return {
                 "error": f"Failed to parse model response: {str(e)}",
-                "overall_score": 0,
-                "skill_scores": {skill: 0 for skill in skills},
-                "skill_justifications": {skill: "Failed to parse response" for skill in skills},
+                "scores": {
+                    "overallScore": 0,
+                    "skillScores": [{"skill": skill, "score": 0, "remarks": "Failed to parse response"} for skill in skills]
+                },
                 "evaluation_summary": "The model did not return a valid JSON response."
             }
-        
 
-
-
-
-
-    #IGNORE THIS
     def _generate_mock_evaluation(self, skills: List[str]) -> Dict[str, Any]:
         """Generate mock evaluation when API key is missing"""
         import random
         
         # Generate mock scores (for testing without API key)
         overall_score = random.randint(6, 9)
-        skill_scores = {skill: random.randint(5, 9) for skill in skills}
         
-        # Generate mock justifications
-        skill_justifications = {}
+        # Generate mock skill scores
+        skill_scores = []
         for skill in skills:
-            score = skill_scores[skill]
+            score = random.randint(5, 9)
             if score >= 8:
-                justification = f"The candidate demonstrated strong knowledge of {skill} with clear explanations and practical understanding."
+                remarks = f"The candidate demonstrated strong knowledge of {skill} with clear explanations and practical understanding."
             elif score >= 6:
-                justification = f"The candidate showed competent knowledge of {skill}, but could provide more in-depth examples."
+                remarks = f"The candidate showed competent knowledge of {skill}, but could provide more in-depth examples."
             else:
-                justification = f"The candidate has basic understanding of {skill}, but needs to develop deeper knowledge."
+                remarks = f"The candidate has basic understanding of {skill}, but needs to develop deeper knowledge."
             
-            skill_justifications[skill] = justification
+            skill_scores.append({
+                "skill": skill,
+                "score": score,
+                "remarks": remarks
+            })
         
         # Generate mock summary
         summary = "The candidate demonstrated good technical knowledge across most skills. Communication skills are strong with clear and concise explanations. They showed a proactive approach to problem-solving and teamwork. Areas for improvement include more practical experience in some technical areas."
         
         return {
-            "overall_score": overall_score,
-            "skill_scores": skill_scores,
-            "skill_justifications": skill_justifications,
+            "scores": {
+                "overallScore": overall_score,
+                "skillScores": skill_scores
+            },
             "evaluation_summary": summary,
             "note": "MOCK EVALUATION - No API key provided"
         }
+
+# Example usage:
+if __name__ == "__main__":
+    # Example conversation history in the new format
+    conversation_history = [
+        {
+            "speaker": "ai",
+            "text": "Hi, I am Mia, your interviewer. Welcome to your interview for the Front-End Developer position. It's nice to meet you, Muhammad Humayun Raza. How are you today? What interests you in this role?",
+            "timestamp": {"$date": "2025-05-16T20:28:07.682Z"}
+        },
+        {
+            "speaker": "candidate",
+            "text": "Nice to meet you too, Mia. Uh, I'm good and, uh, I'm actually graduating this semester, so I'm looking for full-time opportunities, uh, in front-end roles. I'm proficient in React, MERN stack, uh, and I'm excited to make creative applications.",
+            "timestamp": {"$date": "2025-05-16T20:28:50.197Z"}
+        }
+    ]
+    
+    job_description = "Frontend Developer position requiring React, JavaScript, and problem-solving skills."
+    skills = ["React", "JavaScript", "Problem Solving", "Communication"]
+    
+    scorer = InterviewScorer()
+    result = scorer.evaluate_interview(job_description, conversation_history, skills)
+    
+    print(json.dumps(result, indent=2))
