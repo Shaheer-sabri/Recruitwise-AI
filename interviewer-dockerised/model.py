@@ -419,7 +419,8 @@ class AIInterviewer:
             "   j. DO transition directly from one question to the next with brief acknowledgment\n"
             "   k. DO behave like a real human interviewer who doesn't explain the process\n"
             "   l. DO use transitions sentences then directly ask the next question\n"
-            "   m. When asking questions tagged with [RESUME], remove the [RESUME] tag when presenting the question\n"
+            "   m. DO keep the questions brief like a conversational interview.\n"
+            "   n. When asking questions tagged with [RESUME], remove the [RESUME] tag when presenting the question\n"
         )
         
         # Consolidated candidate interaction rules with enhanced security

@@ -155,7 +155,7 @@ Your task is to evaluate an interview transcript and provide scoring based on a 
 {job_description}
 
 # SKILLS TO EVALUATE:
-{skills_text}
+{skills_text}, Confidence, Communication
 
 # INTERVIEW TRANSCRIPT:
 {formatted_transcript}
