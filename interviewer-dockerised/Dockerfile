@@ -1,17 +1,25 @@
-FROM python:3.10-slim
+FROM ubuntu:22.04
 
 WORKDIR /home/app
 
-# Install system dependencies
-#RUN apt-get update && apt-get install -y \
- #   build-essential \
-  #  python3-dev \
-   # poppler-utils \
-    #&& rm -rf /var/lib/apt/lists/*
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies including Python
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create symlink for python command (optional, for compatibility)
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy the application code files
 COPY . .
